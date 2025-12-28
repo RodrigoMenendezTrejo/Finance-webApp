@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { BentoGrid } from '@/components/bento/bento-grid';
 import { NetWorthChart } from '@/components/bento/net-worth-chart';
 import { ReceivablesCard } from '@/components/bento/receivables-card';
-import { QuickStatsCard, RecentActivityCard } from '@/components/bento/quick-stats-card';
+import { FinancialOverviewCard, RecentActivityCard } from '@/components/bento/quick-stats-card';
 import { RecurringCard } from '@/components/bento/subscriptions-card';
 import { FABButton } from '@/components/ui/fab-button';
 import { AddTransactionSheet } from '@/components/forms/add-transaction-sheet';
@@ -192,20 +192,14 @@ export default function DashboardPage() {
                     percentChange={percentChange}
                 />
 
-                {/* Quick Stats */}
-                <QuickStatsCard
-                    type="assets"
-                    amount={totalAssets}
-                    label="Assets"
-                    accountCount={accounts.filter(a => a.type === 'asset').length}
-                    onClick={() => router.push('/accounts?type=asset')}
-                />
-                <QuickStatsCard
-                    type="liabilities"
-                    amount={totalLiabilities}
-                    label="Liabilities"
-                    accountCount={accounts.filter(a => a.type === 'liability').length}
-                    onClick={() => router.push('/accounts?type=liability')}
+                {/* Financial Overview - Assets & Liabilities */}
+                <FinancialOverviewCard
+                    data={{
+                        assets: { amount: totalAssets, count: accounts.filter(a => a.type === 'asset').length },
+                        liabilities: { amount: totalLiabilities, count: accounts.filter(a => a.type === 'liability').length },
+                    }}
+                    onAssetsClick={() => router.push('/accounts?type=asset')}
+                    onLiabilitiesClick={() => router.push('/accounts?type=liability')}
                 />
 
                 {/* Receivables */}

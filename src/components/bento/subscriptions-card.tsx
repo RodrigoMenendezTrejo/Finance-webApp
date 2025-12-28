@@ -65,7 +65,7 @@ export function RecurringCard({
 
     return (
         <BentoCard
-            colSpan={1}
+            colSpan={2}
             rowSpan={1}
             onClick={onClick}
             className={`bg-gradient-to-br ${colors.bgLight}`}
