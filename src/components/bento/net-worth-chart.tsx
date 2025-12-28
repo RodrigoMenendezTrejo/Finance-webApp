@@ -53,20 +53,23 @@ export function NetWorthChart({
         }).format(value);
     };
 
-    // Calculate dynamic Y-axis domain based on data
+    // Calculate dynamic Y-axis domain based on data - tight fit to show movement
     const yAxisDomain = useMemo(() => {
         if (!data || data.length === 0) return [0, 1000];
 
-        const allValues = data.flatMap(d => [d.netWorth, d.assets]);
+        const allValues = data.flatMap(d => [d.netWorth, d.assets]).filter(v => v > 0);
+        if (allValues.length === 0) return [0, 1000];
+
         const minValue = Math.min(...allValues);
         const maxValue = Math.max(...allValues);
 
-        // Add 10% padding on each side for visual breathing room
+        // Use tight 5% padding for more dramatic visualization of changes
         const range = maxValue - minValue;
-        const padding = Math.max(range * 0.15, 50); // At least €50 padding
+        const padding = Math.max(range * 0.05, 10); // At least €10 padding, 5% of range
 
-        const yMin = Math.max(0, Math.floor((minValue - padding) / 100) * 100);
-        const yMax = Math.ceil((maxValue + padding) / 100) * 100;
+        // Don't round to 100s - use precise values for tighter fit
+        const yMin = Math.max(0, minValue - padding);
+        const yMax = maxValue + padding;
 
         return [yMin, yMax];
     }, [data]);
@@ -133,11 +136,10 @@ export function NetWorthChart({
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                             <defs>
-                                {/* Neon glow filter for the main line */}
+                                {/* Tighter neon glow filter for crisp line */}
                                 <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
-                                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                                    <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
                                     <feMerge>
-                                        <feMergeNode in="blur" />
                                         <feMergeNode in="blur" />
                                         <feMergeNode in="SourceGraphic" />
                                     </feMerge>
@@ -163,10 +165,11 @@ export function NetWorthChart({
                             />
                             <XAxis
                                 dataKey="date"
-                                tick={{ fill: '#9ca3af', fontSize: 10 }}
+                                tick={{ fill: '#9ca3af', fontSize: 9 }}
                                 axisLine={false}
                                 tickLine={false}
                                 interval="preserveStartEnd"
+                                minTickGap={40}
                             />
                             <YAxis
                                 domain={yAxisDomain}
@@ -197,12 +200,12 @@ export function NetWorthChart({
                                 fill="url(#assetsGradient)"
                                 name="Assets"
                             />
-                            {/* Net Worth line - primary with neon glow */}
+                            {/* Net Worth line - primary with neon glow, thinner stroke */}
                             <Area
                                 type="monotoneX"
                                 dataKey="netWorth"
                                 stroke="#10b981"
-                                strokeWidth={2.5}
+                                strokeWidth={2}
                                 fill="url(#netWorthGradient)"
                                 name="Net Worth"
                                 filter="url(#neonGlow)"
