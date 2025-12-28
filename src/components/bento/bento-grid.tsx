@@ -14,7 +14,7 @@ export function BentoGrid({ children, className }: BentoGridProps) {
             className={cn(
                 'grid gap-4 p-4',
                 'grid-cols-2 md:grid-cols-4',
-                'auto-rows-[120px] md:auto-rows-[140px]',
+                'auto-rows-[150px] md:auto-rows-[140px]',
                 className
             )}
         >
