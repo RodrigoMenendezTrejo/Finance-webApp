@@ -30,6 +30,13 @@ export function AddTransactionSheet({
     const [saveSuccess, setSaveSuccess] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Editable parsed fields
+    const [editMerchant, setEditMerchant] = useState('');
+    const [editAmount, setEditAmount] = useState('');
+    const [editCategory, setEditCategory] = useState('');
+    const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
+    const [categoryError, setCategoryError] = useState(false);
+
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -68,6 +75,21 @@ export function AddTransactionSheet({
                 return;
             }
 
+            // Populate editable fields from parsed result
+            setEditMerchant(result.merchant || '');
+            setEditAmount(String(result.total || ''));
+            setEditCategory(result.category || '');
+            setCategoryError(false);
+
+            // Detect if it's income based on keywords
+            const textLower = textInput.toLowerCase();
+            const isIncome = textLower.includes('received') ||
+                textLower.includes('income') ||
+                textLower.includes('salary') ||
+                textLower.includes('paid me') ||
+                textLower.includes('bizum');
+            setTransactionType(isIncome ? 'income' : 'expense');
+
             setParsedResult(result);
         } catch (error) {
             console.error('Error processing:', error);
@@ -79,6 +101,19 @@ export function AddTransactionSheet({
 
     const handleConfirm = async () => {
         if (!user || !parsedResult) return;
+
+        // Validate category
+        if (!editCategory.trim()) {
+            setCategoryError(true);
+            return;
+        }
+        setCategoryError(false);
+
+        const amount = parseFloat(editAmount) || 0;
+        if (amount <= 0) {
+            alert('Please enter a valid amount');
+            return;
+        }
 
         setIsSaving(true);
         try {
@@ -115,18 +150,33 @@ export function AddTransactionSheet({
                 }
             }
 
-            // Create the transaction with debt tracking
-            await createExpenseWithDebt(user.uid, {
-                date: new Date(parsedResult.date as string || new Date()),
-                payee: parsedResult.merchant as string,
-                category: (parsedResult.category as string)?.toLowerCase() || 'other',
-                notes: textInput || '',
-                totalAmount: parsedResult.total as number,
-                sourceAccountId,
-                myShare: parsedResult.myShare as number,
-                debtorAccountId,
-                debtShare: debtShare ?? undefined,
-            });
+            if (transactionType === 'income') {
+                // Create income transaction (adds to account)
+                await createTransaction(user.uid, {
+                    date: new Date(parsedResult.date as string || new Date()),
+                    payee: editMerchant || 'Income',
+                    category: editCategory.toLowerCase(),
+                    notes: textInput || '',
+                    amount: amount,
+                    type: 'income',
+                    splits: [
+                        { accountId: sourceAccountId, amount: amount },
+                    ],
+                });
+            } else {
+                // Create expense transaction with debt tracking
+                await createExpenseWithDebt(user.uid, {
+                    date: new Date(parsedResult.date as string || new Date()),
+                    payee: editMerchant || 'Unknown',
+                    category: editCategory.toLowerCase(),
+                    notes: textInput || '',
+                    totalAmount: amount,
+                    sourceAccountId,
+                    myShare: amount - (debtShare ?? 0),
+                    debtorAccountId,
+                    debtShare: debtShare ?? undefined,
+                });
+            }
 
             setSaveSuccess(true);
 
@@ -136,6 +186,11 @@ export function AddTransactionSheet({
                 setPreviewImage(null);
                 setParsedResult(null);
                 setSaveSuccess(false);
+                setEditMerchant('');
+                setEditAmount('');
+                setEditCategory('');
+                setTransactionType('expense');
+                setCategoryError(false);
                 onOpenChange(false);
                 onSuccess?.();
             }, 1000);
@@ -258,44 +313,107 @@ export function AddTransactionSheet({
                         </div>
                     )}
 
-                    {/* Parsed result */}
+                    {/* Parsed result - EDITABLE */}
                     {parsedResult && (
-                        <div className="flex-1 flex flex-col gap-4">
-                            <div className="p-4 rounded-xl bg-muted space-y-3">
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Merchant</span>
-                                    <span className="font-medium">{parsedResult.merchant as string}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Total</span>
-                                    <span className="font-medium">{formatCurrency(parsedResult.total as number)}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Category</span>
-                                    <span className="font-medium">{parsedResult.category as string}</span>
-                                </div>
-                                {typeof parsedResult.debtorName === 'string' && parsedResult.debtorName && (
-                                    <>
-                                        <div className="border-t border-border my-2" />
-                                        <div className="flex justify-between text-emerald-500">
-                                            <span>{parsedResult.debtorName} owes you</span>
-                                            <span className="font-bold">{formatCurrency(parsedResult.debtShare as number)}</span>
-                                        </div>
-                                    </>
-                                )}
+                        <div className="flex-1 flex flex-col gap-4 overflow-auto">
+                            {/* Income/Expense Toggle */}
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setTransactionType('expense')}
+                                    className={`flex-1 py-3 rounded-xl font-medium transition-all ${transactionType === 'expense'
+                                            ? 'bg-rose-600 text-white'
+                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                        }`}
+                                >
+                                    Expense
+                                </button>
+                                <button
+                                    onClick={() => setTransactionType('income')}
+                                    className={`flex-1 py-3 rounded-xl font-medium transition-all ${transactionType === 'income'
+                                            ? 'bg-emerald-600 text-white'
+                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                        }`}
+                                >
+                                    Income
+                                </button>
                             </div>
+
+                            {/* Editable Fields */}
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-sm text-muted-foreground mb-1 block">
+                                        {transactionType === 'income' ? 'From (optional)' : 'Merchant (optional)'}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editMerchant}
+                                        onChange={(e) => setEditMerchant(e.target.value)}
+                                        placeholder={transactionType === 'income' ? 'e.g., Bizum, Salary' : 'e.g., Burger King'}
+                                        className="w-full p-3 rounded-xl bg-muted border-0 focus:ring-2 focus:ring-primary"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-sm text-muted-foreground mb-1 block">Amount (€)</label>
+                                    <input
+                                        type="number"
+                                        value={editAmount}
+                                        onChange={(e) => setEditAmount(e.target.value)}
+                                        placeholder="0.00"
+                                        className="w-full p-3 rounded-xl bg-muted border-0 focus:ring-2 focus:ring-primary text-lg font-bold"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-sm text-muted-foreground mb-1 block">
+                                        Category <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editCategory}
+                                        onChange={(e) => {
+                                            setEditCategory(e.target.value);
+                                            if (e.target.value.trim()) setCategoryError(false);
+                                        }}
+                                        placeholder="e.g., Food, Transport, Income"
+                                        className={`w-full p-3 rounded-xl bg-muted border-2 focus:ring-2 focus:ring-primary ${categoryError ? 'border-rose-500' : 'border-transparent'
+                                            }`}
+                                    />
+                                    {categoryError && (
+                                        <p className="text-rose-500 text-sm mt-1">Please select a category</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Debtor info (if any) */}
+                            {typeof parsedResult.debtorName === 'string' && parsedResult.debtorName && (
+                                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                                    <div className="flex justify-between text-emerald-500">
+                                        <span>{parsedResult.debtorName} owes you</span>
+                                        <span className="font-bold">{formatCurrency(parsedResult.debtShare as number)}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
                             <div className="flex gap-2 mt-auto">
                                 <Button
                                     variant="outline"
-                                    onClick={() => setParsedResult(null)}
+                                    onClick={() => {
+                                        setParsedResult(null);
+                                        setEditMerchant('');
+                                        setEditAmount('');
+                                        setEditCategory('');
+                                        setCategoryError(false);
+                                    }}
                                     className="flex-1"
                                     disabled={isSaving}
                                 >
-                                    Edit
+                                    Start Over
                                 </Button>
                                 <Button
                                     onClick={handleConfirm}
-                                    className="flex-1"
+                                    className={`flex-1 ${transactionType === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
                                     disabled={isSaving || saveSuccess}
                                 >
                                     {saveSuccess ? (
