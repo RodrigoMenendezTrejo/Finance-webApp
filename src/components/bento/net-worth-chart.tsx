@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import {
     AreaChart,
@@ -43,6 +44,32 @@ export function NetWorthChart({
         }).format(value);
     };
 
+    // Calculate dynamic Y-axis domain based on data
+    const yAxisDomain = useMemo(() => {
+        if (!data || data.length === 0) return [0, 1000];
+
+        const allValues = data.flatMap(d => [d.netWorth, d.assets]);
+        const minValue = Math.min(...allValues);
+        const maxValue = Math.max(...allValues);
+
+        // Add 10% padding on each side for visual breathing room
+        const range = maxValue - minValue;
+        const padding = Math.max(range * 0.15, 50); // At least €50 padding
+
+        const yMin = Math.max(0, Math.floor((minValue - padding) / 100) * 100);
+        const yMax = Math.ceil((maxValue + padding) / 100) * 100;
+
+        return [yMin, yMax];
+    }, [data]);
+
+    // Format Y-axis label to show proper values
+    const formatYAxis = (value: number) => {
+        if (value >= 1000) {
+            return `€${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+        }
+        return `€${value}`;
+    };
+
     return (
         <BentoCard colSpan={2} rowSpan={2} className="bg-gradient-to-br from-slate-900 to-slate-800">
             <BentoCardHeader
@@ -73,18 +100,27 @@ export function NetWorthChart({
                 {/* Chart */}
                 <div className="flex-1 min-h-[100px] mt-2">
                     <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                        <AreaChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                             <defs>
+                                {/* Enhanced Net Worth gradient - 40% opacity at top */}
                                 <linearGradient id="netWorthGradient" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                                    <stop offset="50%" stopColor="#10b981" stopOpacity={0.15} />
+                                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
                                 </linearGradient>
+                                {/* Assets gradient - subtle since it's secondary */}
                                 <linearGradient id="assetsGradient" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.15} />
+                                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
                                 </linearGradient>
                             </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                            {/* Clean horizontal-only gridlines */}
+                            <CartesianGrid
+                                strokeDasharray="0"
+                                stroke="rgba(255,255,255,0.08)"
+                                strokeWidth={1}
+                                vertical={false}
+                            />
                             <XAxis
                                 dataKey="month"
                                 tick={{ fill: '#9ca3af', fontSize: 10 }}
@@ -92,10 +128,12 @@ export function NetWorthChart({
                                 tickLine={false}
                             />
                             <YAxis
+                                domain={yAxisDomain}
                                 tick={{ fill: '#9ca3af', fontSize: 10 }}
                                 axisLine={false}
                                 tickLine={false}
-                                tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                                tickFormatter={formatYAxis}
+                                width={45}
                             />
                             <Tooltip
                                 contentStyle={{
@@ -104,21 +142,26 @@ export function NetWorthChart({
                                     borderRadius: '8px',
                                     fontSize: '12px',
                                 }}
-                                formatter={(value) => [formatCurrency(value as number), '']}
+                                formatter={(value, name) => [formatCurrency(value as number), name]}
+                                labelStyle={{ color: '#9ca3af', marginBottom: '4px' }}
                             />
+                            {/* Assets line - secondary, dashed, lower opacity */}
                             <Area
-                                type="monotone"
+                                type="monotoneX"
                                 dataKey="assets"
                                 stroke="#3b82f6"
                                 strokeWidth={1.5}
+                                strokeDasharray="4 2"
+                                strokeOpacity={0.6}
                                 fill="url(#assetsGradient)"
                                 name="Assets"
                             />
+                            {/* Net Worth line - primary, smooth, prominent */}
                             <Area
-                                type="monotone"
+                                type="monotoneX"
                                 dataKey="netWorth"
                                 stroke="#10b981"
-                                strokeWidth={2}
+                                strokeWidth={2.5}
                                 fill="url(#netWorthGradient)"
                                 name="Net Worth"
                             />
@@ -129,3 +172,4 @@ export function NetWorthChart({
         </BentoCard>
     );
 }
+
