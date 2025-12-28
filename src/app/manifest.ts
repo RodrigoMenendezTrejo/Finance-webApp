@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
     return {
-        name: 'Sovereign Finance',
-        short_name: 'Sovereign',
+        name: 'SafeBalance',
+        short_name: 'SafeBalance',
         description: 'Personal Finance PWA with AI-powered receipt scanning',
         start_url: '/',
         display: 'standalone',

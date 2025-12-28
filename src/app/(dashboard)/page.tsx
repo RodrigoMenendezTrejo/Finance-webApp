@@ -168,7 +168,7 @@ export default function DashboardPage() {
                 <div className="px-4 py-3 flex items-center justify-between">
                     <div>
                         <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-                            Sovereign
+                            SafeBalance
                         </h1>
                         <p className="text-xs text-muted-foreground">{getGreeting()}</p>
                     </div>

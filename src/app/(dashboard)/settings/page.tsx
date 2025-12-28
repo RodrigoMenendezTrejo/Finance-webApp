@@ -127,7 +127,7 @@ export default function SettingsPage() {
 
                 {/* App Version */}
                 <p className="text-center text-xs text-muted-foreground">
-                    Sovereign Finance v1.0.0
+                    SafeBalance v1.0.0
                 </p>
             </div>
         </main>

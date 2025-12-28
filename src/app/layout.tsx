@@ -15,12 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sovereign Finance",
+  title: "SafeBalance",
   description: "Personal Finance PWA with AI-powered receipt scanning",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Sovereign",
+    title: "SafeBalance",
   },
   formatDetection: {
     telephone: false,
