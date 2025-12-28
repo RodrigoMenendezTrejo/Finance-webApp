@@ -12,9 +12,12 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import { BentoCard, BentoCardHeader, BentoCardContent } from './bento-grid';
+import { cn } from '@/lib/utils';
+
+export type ChartPeriod = '1M' | '6M' | '1Y';
 
 interface NetWorthData {
-    month: string;
+    date: string;
     assets: number;
     liabilities: number;
     netWorth: number;
@@ -25,6 +28,9 @@ interface NetWorthChartProps {
     currentNetWorth: number;
     percentChange: number;
     hideAmounts?: boolean;
+    selectedPeriod: ChartPeriod;
+    onPeriodChange: (period: ChartPeriod) => void;
+    isLoading?: boolean;
 }
 
 export function NetWorthChart({
@@ -32,6 +38,9 @@ export function NetWorthChart({
     currentNetWorth,
     percentChange,
     hideAmounts = false,
+    selectedPeriod,
+    onPeriodChange,
+    isLoading = false,
 }: NetWorthChartProps) {
     const isPositive = percentChange >= 0;
 
@@ -70,27 +79,49 @@ export function NetWorthChart({
         return `€${value}`;
     };
 
+    const periods: ChartPeriod[] = ['1M', '6M', '1Y'];
+
     return (
         <BentoCard colSpan={2} rowSpan={2} className="bg-gradient-to-br from-slate-900 to-slate-800">
-            <BentoCardHeader
-                title="Net Worth"
-                subtitle="Last 6 months"
-                icon={
-                    isPositive ? (
+            <div className="flex items-start justify-between mb-2">
+                <div>
+                    <h3 className="font-semibold text-sm text-foreground">Net Worth</h3>
+                    {/* Period selector */}
+                    <div className="flex gap-1 mt-1">
+                        {periods.map((period) => (
+                            <button
+                                key={period}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onPeriodChange(period);
+                                }}
+                                className={cn(
+                                    'px-2 py-0.5 text-xs rounded-md font-medium transition-all',
+                                    selectedPeriod === period
+                                        ? 'bg-emerald-500/20 text-emerald-400'
+                                        : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
+                                )}
+                            >
+                                {period}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="text-muted-foreground group-hover:text-primary transition-colors">
+                    {isPositive ? (
                         <TrendingUp className="w-5 h-5 text-emerald-500" />
                     ) : (
                         <TrendingDown className="w-5 h-5 text-rose-500" />
-                    )
-                }
-            />
+                    )}
+                </div>
+            </div>
             <BentoCardContent className="gap-2">
                 <div className="flex items-baseline gap-2">
                     <span className={`text-2xl md:text-3xl font-bold text-foreground ${hideAmounts ? 'blur-md select-none' : ''}`}>
                         {formatCurrency(currentNetWorth)}
                     </span>
                     <span
-                        className={`text-sm font-medium ${isPositive ? 'text-emerald-500' : 'text-rose-500'
-                            }`}
+                        className={`text-sm font-medium ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}
                     >
                         {isPositive ? '+' : ''}
                         {percentChange.toFixed(1)}%
@@ -131,10 +162,11 @@ export function NetWorthChart({
                                 vertical={false}
                             />
                             <XAxis
-                                dataKey="month"
+                                dataKey="date"
                                 tick={{ fill: '#9ca3af', fontSize: 10 }}
                                 axisLine={false}
                                 tickLine={false}
+                                interval="preserveStartEnd"
                             />
                             <YAxis
                                 domain={yAxisDomain}

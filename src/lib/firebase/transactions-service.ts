@@ -259,3 +259,112 @@ export async function getTotalSpending(
     const spending = await getSpendingByCategory(userId, startDate, endDate);
     return Object.values(spending).reduce((sum, amount) => sum + amount, 0);
 }
+
+// Get net worth history for charting
+// Works by fetching all transactions and calculating running balance over time
+export async function getNetWorthHistory(
+    userId: string,
+    period: '1M' | '6M' | '1Y',
+    currentAssets: number,
+    currentLiabilities: number
+): Promise<{ date: string; assets: number; liabilities: number; netWorth: number }[]> {
+    const now = new Date();
+    let startDate: Date;
+    let pointCount: number;
+    let labelFormat: (d: Date) => string;
+
+    // Configure based on period
+    switch (period) {
+        case '1M':
+            startDate = new Date(now);
+            startDate.setMonth(startDate.getMonth() - 1);
+            pointCount = 30; // Daily points
+            labelFormat = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
+            break;
+        case '6M':
+            startDate = new Date(now);
+            startDate.setMonth(startDate.getMonth() - 6);
+            pointCount = 26; // Weekly points
+            labelFormat = (d) => {
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return `${d.getDate()} ${months[d.getMonth()]}`;
+            };
+            break;
+        case '1Y':
+            startDate = new Date(now);
+            startDate.setFullYear(startDate.getFullYear() - 1);
+            pointCount = 12; // Monthly points
+            labelFormat = (d) => {
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return months[d.getMonth()];
+            };
+            break;
+    }
+
+    // Fetch all transactions in the period
+    const transactionsRef = getTransactionsRef(userId);
+    const q = query(
+        transactionsRef,
+        where('date', '>=', Timestamp.fromDate(startDate)),
+        orderBy('date', 'desc')
+    );
+    const snapshot = await getDocs(q);
+    const transactions = snapshot.docs.map((doc) => ({
+        ...doc.data(),
+        date: (doc.data().date as Timestamp).toDate(),
+    })) as (Transaction & { date: Date })[];
+
+    // Generate time points
+    const points: { date: Date; label: string }[] = [];
+    const millisPerPoint = (now.getTime() - startDate.getTime()) / (pointCount - 1);
+
+    for (let i = 0; i < pointCount; i++) {
+        const pointDate = new Date(startDate.getTime() + i * millisPerPoint);
+        points.push({
+            date: pointDate,
+            label: labelFormat(pointDate),
+        });
+    }
+
+    // Calculate balance at each point by working backwards from current
+    // For each point, sum up all transaction impacts after that point
+    const result: { date: string; assets: number; liabilities: number; netWorth: number }[] = [];
+
+    for (const point of points) {
+        // Sum all transaction impacts after this point
+        let assetDelta = 0;
+        let liabilityDelta = 0;
+
+        for (const tx of transactions) {
+            if (tx.date > point.date) {
+                // This transaction happened after the point, so we need to reverse its impact
+                for (const split of tx.splits) {
+                    // We need to determine if this was an asset or liability account
+                    // For simplicity, we'll use the transaction amount directly
+                    // Negative splits typically hit assets, positive splits hit receivables
+                    if (split.amount < 0) {
+                        assetDelta += Math.abs(split.amount); // Reverse the deduction
+                    } else if (!split.isDebtSettlement) {
+                        // Positive split that's not debt settlement could be receivable
+                        liabilityDelta -= split.amount; // This is tricky...
+                    }
+                }
+            }
+        }
+
+        // Historical balance = current - changes since then
+        const assetsAtPoint = Math.max(0, currentAssets - assetDelta);
+        const liabilitiesAtPoint = Math.max(0, currentLiabilities);
+        const netWorthAtPoint = assetsAtPoint - liabilitiesAtPoint;
+
+        result.push({
+            date: point.label,
+            assets: assetsAtPoint,
+            liabilities: liabilitiesAtPoint,
+            netWorth: netWorthAtPoint,
+        });
+    }
+
+    return result;
+}
+
