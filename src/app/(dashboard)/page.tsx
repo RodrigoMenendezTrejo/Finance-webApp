@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { BentoGrid } from '@/components/bento/bento-grid';
 import { NetWorthChart } from '@/components/bento/net-worth-chart';
 import { ReceivablesCard } from '@/components/bento/receivables-card';
 import { QuickStatsCard, RecentActivityCard } from '@/components/bento/quick-stats-card';
-import { SubscriptionsCard } from '@/components/bento/subscriptions-card';
+import { RecurringCard } from '@/components/bento/subscriptions-card';
 import { FABButton } from '@/components/ui/fab-button';
 import { AddTransactionSheet } from '@/components/forms/add-transaction-sheet';
 import { useAuth } from '@/lib/firebase/auth-context';
@@ -45,60 +45,75 @@ export default function DashboardPage() {
     const [totalReceivables, setTotalReceivables] = useState(0);
     const [monthlySpending, setMonthlySpending] = useState(0);
     const [recentCount, setRecentCount] = useState(0);
-    const [subscriptionTotal, setSubscriptionTotal] = useState(0);
-    const [subscriptionCount, setSubscriptionCount] = useState(0);
+    const [recurringData, setRecurringData] = useState({
+        subscriptions: { total: 0, count: 0 },
+        income: { total: 0, count: 0 },
+        bills: { total: 0, count: 0 },
+    });
 
     const [isAddingTransaction, setIsAddingTransaction] = useState(false);
     const [addMode, setAddMode] = useState<'camera' | 'text'>('text');
 
     // Fetch data from Firestore
-    useEffect(() => {
-        async function fetchData() {
-            if (!user) return;
+    const fetchData = useCallback(async () => {
+        if (!user) return;
 
-            try {
-                // Fetch all accounts
-                const allAccounts = await getAccounts(user.uid);
-                setAccounts(allAccounts);
+        try {
+            // Fetch all accounts
+            const allAccounts = await getAccounts(user.uid);
+            setAccounts(allAccounts);
 
-                // Calculate totals by type
-                const assets = allAccounts.filter(a => a.type === 'asset').reduce((sum, a) => sum + a.balance, 0);
-                const liabilities = allAccounts.filter(a => a.type === 'liability').reduce((sum, a) => sum + a.balance, 0);
-                const receivables = allAccounts.filter(a => a.type === 'receivable').reduce((sum, a) => sum + a.balance, 0);
+            // Calculate totals by type
+            const assets = allAccounts.filter(a => a.type === 'asset').reduce((sum, a) => sum + a.balance, 0);
+            const liabilities = allAccounts.filter(a => a.type === 'liability').reduce((sum, a) => sum + a.balance, 0);
+            const receivables = allAccounts.filter(a => a.type === 'receivable').reduce((sum, a) => sum + a.balance, 0);
 
-                setTotalAssets(assets);
-                setTotalLiabilities(liabilities);
-                setTotalReceivables(receivables);
+            setTotalAssets(assets);
+            setTotalLiabilities(liabilities);
+            setTotalReceivables(receivables);
 
-                // Get monthly spending
-                const now = new Date();
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-                const spending = await getTotalSpending(user.uid, startOfMonth, now);
-                setMonthlySpending(spending);
+            // Get monthly spending
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const spending = await getTotalSpending(user.uid, startOfMonth, now);
+            setMonthlySpending(spending);
 
-                // Get recent transactions count
-                const { transactions } = await getTransactions(user.uid, { limit: 50 });
-                const weekAgo = new Date();
-                weekAgo.setDate(weekAgo.getDate() - 7);
-                const recentTxns = transactions.filter(t => t.date.toDate() >= weekAgo);
-                setRecentCount(recentTxns.length);
+            // Get recent transactions count
+            const { transactions } = await getTransactions(user.uid, { limit: 50 });
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            const recentTxns = transactions.filter(t => t.date.toDate() >= weekAgo);
+            setRecentCount(recentTxns.length);
 
-                // Get recurring/subscription data
-                const recurringItems = await getRecurringTransactions(user.uid);
-                const activeSubscriptions = recurringItems.filter(r => r.type === 'subscription' && r.isActive);
-                setSubscriptionCount(activeSubscriptions.length);
-                const subTotal = await getMonthlyRecurringTotal(user.uid, 'subscription');
-                setSubscriptionTotal(subTotal);
+            // Get recurring data for all types
+            const recurringItems = await getRecurringTransactions(user.uid);
 
-            } catch (error) {
-                console.error('Error fetching dashboard data:', error);
-            } finally {
-                setLoading(false);
-            }
+            const activeSubs = recurringItems.filter(r => r.type === 'subscription' && r.isActive);
+            const activeIncome = recurringItems.filter(r => r.type === 'income' && r.isActive);
+            const activeBills = recurringItems.filter(r => r.type === 'bill' && r.isActive);
+
+            const [subTotal, incomeTotal, billTotal] = await Promise.all([
+                getMonthlyRecurringTotal(user.uid, 'subscription'),
+                getMonthlyRecurringTotal(user.uid, 'income'),
+                getMonthlyRecurringTotal(user.uid, 'bill'),
+            ]);
+
+            setRecurringData({
+                subscriptions: { total: subTotal, count: activeSubs.length },
+                income: { total: incomeTotal, count: activeIncome.length },
+                bills: { total: billTotal, count: activeBills.length },
+            });
+
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+        } finally {
+            setLoading(false);
         }
-
-        fetchData();
     }, [user]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleCameraClick = () => {
         setAddMode('camera');
@@ -201,9 +216,8 @@ export default function DashboardPage() {
                 />
 
                 {/* Recurring */}
-                <SubscriptionsCard
-                    monthlyTotal={subscriptionTotal}
-                    activeCount={subscriptionCount}
+                <RecurringCard
+                    data={recurringData}
                     onClick={() => router.push('/recurring')}
                 />
 
@@ -225,6 +239,7 @@ export default function DashboardPage() {
                 open={isAddingTransaction}
                 onOpenChange={setIsAddingTransaction}
                 mode={addMode}
+                onSuccess={fetchData}
             />
         </main>
     );

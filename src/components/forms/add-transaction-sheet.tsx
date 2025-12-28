@@ -12,12 +12,14 @@ interface AddTransactionSheetProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     mode: 'camera' | 'text';
+    onSuccess?: () => void;
 }
 
 export function AddTransactionSheet({
     open,
     onOpenChange,
     mode,
+    onSuccess,
 }: AddTransactionSheetProps) {
     const { user } = useAuth();
     const [isProcessing, setIsProcessing] = useState(false);
@@ -128,13 +130,14 @@ export function AddTransactionSheet({
 
             setSaveSuccess(true);
 
-            // Wait a moment to show success, then close
+            // Wait a moment to show success, then close and notify parent
             setTimeout(() => {
                 setTextInput('');
                 setPreviewImage(null);
                 setParsedResult(null);
                 setSaveSuccess(false);
                 onOpenChange(false);
+                onSuccess?.();
             }, 1000);
 
         } catch (error) {

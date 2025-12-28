@@ -85,7 +85,6 @@ export function FABButton({ onCameraClick, onTextClick }: FABButtonProps) {
                     'transition-all duration-200',
                     'no-select'
                 )}
-                style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
             >
                 <div
                     className={cn(
