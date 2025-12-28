@@ -155,14 +155,29 @@ export default function DashboardPage() {
             avatarColor: getAvatarColor(a.name),
         }));
 
+    // Generate dynamic months (last 6 months ending with current month)
+    const getMonthLabels = () => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const labels = [];
+        for (let i = 5; i >= 0; i--) {
+            const monthIndex = (currentMonth - i + 12) % 12;
+            labels.push(months[monthIndex]);
+        }
+        return labels;
+    };
+    const monthLabels = getMonthLabels();
+
     // Mock net worth history (will be replaced with real data later)
+    // Data uses current values with simulated historical growth
     const netWorthData = [
-        { month: 'Jul', assets: netWorth * 0.7, liabilities: totalLiabilities, netWorth: netWorth * 0.65 },
-        { month: 'Aug', assets: netWorth * 0.75, liabilities: totalLiabilities, netWorth: netWorth * 0.7 },
-        { month: 'Sep', assets: netWorth * 0.8, liabilities: totalLiabilities, netWorth: netWorth * 0.78 },
-        { month: 'Oct', assets: netWorth * 0.85, liabilities: totalLiabilities, netWorth: netWorth * 0.83 },
-        { month: 'Nov', assets: netWorth * 0.95, liabilities: totalLiabilities, netWorth: netWorth * 0.92 },
-        { month: 'Dec', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
+        { month: monthLabels[0], assets: totalAssets * 0.7, liabilities: totalLiabilities, netWorth: netWorth * 0.65 },
+        { month: monthLabels[1], assets: totalAssets * 0.75, liabilities: totalLiabilities, netWorth: netWorth * 0.7 },
+        { month: monthLabels[2], assets: totalAssets * 0.8, liabilities: totalLiabilities, netWorth: netWorth * 0.78 },
+        { month: monthLabels[3], assets: totalAssets * 0.85, liabilities: totalLiabilities, netWorth: netWorth * 0.83 },
+        { month: monthLabels[4], assets: totalAssets * 0.95, liabilities: totalLiabilities, netWorth: netWorth * 0.92 },
+        { month: monthLabels[5], assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
     ];
 
     const percentChange = netWorthData.length >= 2

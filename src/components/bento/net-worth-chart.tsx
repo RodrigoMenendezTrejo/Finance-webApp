@@ -102,6 +102,15 @@ export function NetWorthChart({
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                             <defs>
+                                {/* Neon glow filter for the main line */}
+                                <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
+                                    <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                                    <feMerge>
+                                        <feMergeNode in="blur" />
+                                        <feMergeNode in="blur" />
+                                        <feMergeNode in="SourceGraphic" />
+                                    </feMerge>
+                                </filter>
                                 {/* Enhanced Net Worth gradient - 40% opacity at top */}
                                 <linearGradient id="netWorthGradient" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
@@ -156,7 +165,7 @@ export function NetWorthChart({
                                 fill="url(#assetsGradient)"
                                 name="Assets"
                             />
-                            {/* Net Worth line - primary, smooth, prominent */}
+                            {/* Net Worth line - primary with neon glow */}
                             <Area
                                 type="monotoneX"
                                 dataKey="netWorth"
@@ -164,6 +173,7 @@ export function NetWorthChart({
                                 strokeWidth={2.5}
                                 fill="url(#netWorthGradient)"
                                 name="Net Worth"
+                                filter="url(#neonGlow)"
                             />
                         </AreaChart>
                     </ResponsiveContainer>
