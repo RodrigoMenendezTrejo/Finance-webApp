@@ -13,7 +13,7 @@ import { AddTransactionSheet } from '@/components/forms/add-transaction-sheet';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getAccounts, getTotalByType } from '@/lib/firebase/accounts-service';
 import { getTransactions, getTotalSpending } from '@/lib/firebase/transactions-service';
-import { getRecurringTransactions, getMonthlyRecurringTotal } from '@/lib/firebase/recurring-service';
+import { getRecurringTransactions, getMonthlyRecurringTotal, processDueRecurring } from '@/lib/firebase/recurring-service';
 import { Account } from '@/types/firestore';
 
 // Generate avatar colors based on name
@@ -59,6 +59,9 @@ export default function DashboardPage() {
         if (!user) return;
 
         try {
+            // Auto-process any due recurring transactions
+            await processDueRecurring(user.uid);
+
             // Fetch all accounts
             const allAccounts = await getAccounts(user.uid);
             setAccounts(allAccounts);

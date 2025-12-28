@@ -11,7 +11,10 @@ export interface Account {
     balance: number;
     currency: string; // Default: 'EUR'
     icon?: string;
-    category?: string; // For receivables: reason (food, gas, etc.)
+    category?: string; // For receivables/liabilities: reason (food, gas, etc.)
+    isPaid?: boolean; // For liabilities: has this been paid?
+    paidFromAccountId?: string; // For liabilities: which asset account was used to pay
+    paidAt?: Timestamp; // For liabilities: when was it paid
     createdAt: Timestamp;
     updatedAt: Timestamp;
 }

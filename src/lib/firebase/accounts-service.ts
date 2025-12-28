@@ -174,3 +174,67 @@ export async function createDefaultAccounts(userId: string): Promise<void> {
         await createAccount(userId, account);
     }
 }
+
+// Get unpaid liabilities
+export async function getUnpaidLiabilities(userId: string): Promise<Account[]> {
+    const liabilities = await getAccountsByType(userId, 'liability');
+    return liabilities.filter(l => !l.isPaid);
+}
+
+// Mark a liability as paid and deduct from an asset account
+export async function markLiabilityPaid(
+    userId: string,
+    liabilityId: string,
+    payFromAccountId: string
+): Promise<void> {
+    // Get the liability
+    const liability = await getAccount(userId, liabilityId);
+    if (!liability) throw new Error('Liability not found');
+    if (liability.type !== 'liability') throw new Error('Account is not a liability');
+    if (liability.isPaid) throw new Error('Liability is already paid');
+
+    // Get the asset account
+    const assetAccount = await getAccount(userId, payFromAccountId);
+    if (!assetAccount) throw new Error('Asset account not found');
+    if (assetAccount.type !== 'asset') throw new Error('Can only pay from asset accounts');
+
+    // Deduct from asset account
+    const newAssetBalance = assetAccount.balance - liability.balance;
+    await updateAccountBalance(userId, payFromAccountId, newAssetBalance);
+
+    // Mark liability as paid
+    await updateAccount(userId, liabilityId, {
+        isPaid: true,
+        paidFromAccountId: payFromAccountId,
+        paidAt: Timestamp.now(),
+        balance: 0, // Clear the balance since it's paid
+    });
+}
+
+// Unmark a liability as paid (restore the debt)
+export async function unmarkLiabilityPaid(
+    userId: string,
+    liabilityId: string,
+    originalAmount: number
+): Promise<void> {
+    const liability = await getAccount(userId, liabilityId);
+    if (!liability) throw new Error('Liability not found');
+    if (!liability.isPaid) throw new Error('Liability is not paid');
+
+    // If we know which account it was paid from, restore the balance
+    if (liability.paidFromAccountId) {
+        const assetAccount = await getAccount(userId, liability.paidFromAccountId);
+        if (assetAccount) {
+            const newAssetBalance = assetAccount.balance + originalAmount;
+            await updateAccountBalance(userId, liability.paidFromAccountId, newAssetBalance);
+        }
+    }
+
+    // Restore the liability
+    await updateAccount(userId, liabilityId, {
+        isPaid: false,
+        paidFromAccountId: undefined,
+        paidAt: undefined,
+        balance: originalAmount,
+    });
+}

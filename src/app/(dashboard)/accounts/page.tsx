@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { getAccounts, createAccount, updateAccount, deleteAccount } from '@/lib/firebase/accounts-service';
+import { getAccounts, createAccount, updateAccount, deleteAccount, markLiabilityPaid, getAccountsByType as getAccountsByTypeFromDb } from '@/lib/firebase/accounts-service';
 import { createTransaction } from '@/lib/firebase/transactions-service';
 import { Account, AccountType } from '@/types/firestore';
 
@@ -68,6 +68,12 @@ function AccountsContent() {
 
     // Settle receivable state
     const [isSettling, setIsSettling] = useState(false);
+
+    // Pay liability state
+    const [isPayOpen, setIsPayOpen] = useState(false);
+    const [payFromAccountId, setPayFromAccountId] = useState('');
+    const [isPaying, setIsPaying] = useState(false);
+    const [assetAccounts, setAssetAccounts] = useState<Account[]>([]);
 
     // Fetch accounts
     useEffect(() => {
@@ -318,6 +324,33 @@ function AccountsContent() {
         }
     };
 
+    const openPayDialog = async () => {
+        if (!user) return;
+        // Load asset accounts for the dropdown
+        const assets = await getAccountsByTypeFromDb(user.uid, 'asset');
+        setAssetAccounts(assets);
+        setPayFromAccountId(assets[0]?.id || '');
+        setIsPayOpen(true);
+    };
+
+    const handlePayLiability = async () => {
+        if (!user || !selectedAccount || !payFromAccountId) return;
+
+        setIsPaying(true);
+        try {
+            await markLiabilityPaid(user.uid, selectedAccount.id, payFromAccountId);
+            await refreshAccounts();
+            setIsPayOpen(false);
+            setIsEditOpen(false);
+            setSelectedAccount(null);
+        } catch (error) {
+            console.error('Error paying liability:', error);
+            alert('Failed to mark as paid. Please try again.');
+        } finally {
+            setIsPaying(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -370,9 +403,11 @@ function AccountsContent() {
                                         onChange={(e) => setNewAccountBalance(e.target.value)}
                                     />
                                 </div>
-                                {activeTab === 'receivable' && (
+                                {(activeTab === 'receivable' || activeTab === 'liability') && (
                                     <div>
-                                        <label className="text-sm text-muted-foreground mb-1 block">Reason</label>
+                                        <label className="text-sm text-muted-foreground mb-1 block">
+                                            {activeTab === 'receivable' ? 'Reason (what do they owe for?)' : 'Reason (what do you owe for?)'}
+                                        </label>
                                         <div className="flex gap-2">
                                             <Input
                                                 placeholder="e.g., Food, Gas, Rent split"
@@ -508,7 +543,11 @@ function AccountsContent() {
                                                 <p className="text-xs text-muted-foreground">
                                                     {type === 'receivable'
                                                         ? `Owes you${account.category ? ` for ${account.category}` : ''}`
-                                                        : 'Balance'}
+                                                        : type === 'liability'
+                                                            ? account.isPaid
+                                                                ? '✓ Paid'
+                                                                : `You owe${account.category ? ` for ${account.category}` : ''}`
+                                                            : 'Balance'}
                                                 </p>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -671,6 +710,18 @@ function AccountsContent() {
                             </Button>
                         )}
 
+                        {/* Mark liability as paid button */}
+                        {selectedAccount?.type === 'liability' && !selectedAccount?.isPaid && (
+                            <Button
+                                variant="outline"
+                                onClick={openPayDialog}
+                                className="w-full text-rose-500 border-rose-500/30 hover:bg-rose-500/10"
+                            >
+                                <Check className="w-4 h-4 mr-2" />
+                                Mark as Paid ({formatCurrency(selectedAccount.balance)})
+                            </Button>
+                        )}
+
                         {/* Delete button */}
                         <Button
                             variant="destructive"
@@ -704,6 +755,44 @@ function AccountsContent() {
                             disabled={isDeleting}
                         >
                             {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Pay Liability Dialog */}
+            <Dialog open={isPayOpen} onOpenChange={setIsPayOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Pay Liability</DialogTitle>
+                        <DialogDescription>
+                            Choose which account to pay from. This will deduct {selectedAccount ? formatCurrency(selectedAccount.balance) : ''} from the selected account.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <label className="text-sm text-muted-foreground mb-2 block">Pay from:</label>
+                        <select
+                            value={payFromAccountId}
+                            onChange={(e) => setPayFromAccountId(e.target.value)}
+                            className="w-full p-3 rounded-lg bg-muted border border-border text-foreground"
+                        >
+                            {assetAccounts.map((account) => (
+                                <option key={account.id} value={account.id}>
+                                    {account.icon || '💰'} {account.name} ({formatCurrency(account.balance)})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={() => setIsPayOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handlePayLiability}
+                            disabled={isPaying}
+                            className="bg-rose-600 hover:bg-rose-700"
+                        >
+                            {isPaying ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Payment'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
