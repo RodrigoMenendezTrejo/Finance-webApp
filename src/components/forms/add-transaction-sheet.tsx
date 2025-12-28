@@ -150,10 +150,19 @@ export function AddTransactionSheet({
                 }
             }
 
+            // Get a valid date (fallback to now if invalid)
+            const getValidDate = () => {
+                if (!parsedResult.date) return new Date();
+                const parsed = new Date(parsedResult.date as string);
+                return isNaN(parsed.getTime()) ? new Date() : parsed;
+            };
+            const transactionDate = getValidDate();
+
+
             if (transactionType === 'income') {
                 // Create income transaction (adds to account)
                 await createTransaction(user.uid, {
-                    date: new Date(parsedResult.date as string || new Date()),
+                    date: transactionDate,
                     payee: editMerchant || 'Income',
                     category: editCategory.toLowerCase(),
                     notes: textInput || '',
@@ -166,7 +175,7 @@ export function AddTransactionSheet({
             } else {
                 // Create expense transaction with debt tracking
                 await createExpenseWithDebt(user.uid, {
-                    date: new Date(parsedResult.date as string || new Date()),
+                    date: transactionDate,
                     payee: editMerchant || 'Unknown',
                     category: editCategory.toLowerCase(),
                     notes: textInput || '',
@@ -321,8 +330,8 @@ export function AddTransactionSheet({
                                 <button
                                     onClick={() => setTransactionType('expense')}
                                     className={`flex-1 py-3 rounded-xl font-medium transition-all ${transactionType === 'expense'
-                                            ? 'bg-rose-600 text-white'
-                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                        ? 'bg-rose-600 text-white'
+                                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                         }`}
                                 >
                                     Expense
@@ -330,8 +339,8 @@ export function AddTransactionSheet({
                                 <button
                                     onClick={() => setTransactionType('income')}
                                     className={`flex-1 py-3 rounded-xl font-medium transition-all ${transactionType === 'income'
-                                            ? 'bg-emerald-600 text-white'
-                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                         }`}
                                 >
                                     Income
