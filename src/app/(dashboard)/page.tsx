@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { BentoGrid } from '@/components/bento/bento-grid';
 import { NetWorthChart } from '@/components/bento/net-worth-chart';
 import { ReceivablesCard } from '@/components/bento/receivables-card';
@@ -53,6 +53,7 @@ export default function DashboardPage() {
 
     const [isAddingTransaction, setIsAddingTransaction] = useState(false);
     const [addMode, setAddMode] = useState<'camera' | 'text'>('text');
+    const [hideAmounts, setHideAmounts] = useState(false);
 
     // Fetch data from Firestore
     const fetchData = useCallback(async () => {
@@ -175,14 +176,27 @@ export default function DashboardPage() {
                         </h1>
                         <p className="text-xs text-muted-foreground">{getGreeting()}</p>
                     </div>
-                    <button
-                        onClick={() => router.push('/settings')}
-                        className="w-10 h-10 rounded-full bg-muted flex items-center justify-center"
-                    >
-                        <span className="text-sm font-medium">
-                            {userProfile?.displayName?.charAt(0).toUpperCase() || 'U'}
-                        </span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setHideAmounts(!hideAmounts)}
+                            className="w-8 h-8 rounded-full bg-muted/50 flex items-center justify-center hover:bg-muted transition-colors"
+                            title={hideAmounts ? 'Show amounts' : 'Hide amounts'}
+                        >
+                            {hideAmounts ? (
+                                <EyeOff className="w-4 h-4 text-muted-foreground" />
+                            ) : (
+                                <Eye className="w-4 h-4 text-muted-foreground" />
+                            )}
+                        </button>
+                        <button
+                            onClick={() => router.push('/settings')}
+                            className="w-10 h-10 rounded-full bg-muted flex items-center justify-center"
+                        >
+                            <span className="text-sm font-medium">
+                                {userProfile?.displayName?.charAt(0).toUpperCase() || 'U'}
+                            </span>
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -193,6 +207,7 @@ export default function DashboardPage() {
                     data={netWorthData}
                     currentNetWorth={netWorth}
                     percentChange={percentChange}
+                    hideAmounts={hideAmounts}
                 />
 
                 {/* Financial Overview - Assets & Liabilities */}
@@ -203,6 +218,7 @@ export default function DashboardPage() {
                     }}
                     onAssetsClick={() => router.push('/accounts?type=asset')}
                     onLiabilitiesClick={() => router.push('/accounts?type=liability')}
+                    hideAmounts={hideAmounts}
                 />
 
                 {/* Receivables */}

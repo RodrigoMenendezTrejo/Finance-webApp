@@ -87,7 +87,7 @@ export function BentoCard({
 
 interface BentoCardHeaderProps {
     title: string;
-    subtitle?: string;
+    subtitle?: ReactNode;
     icon?: ReactNode;
 }
 

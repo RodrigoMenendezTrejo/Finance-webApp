@@ -23,12 +23,14 @@ interface NetWorthChartProps {
     data: NetWorthData[];
     currentNetWorth: number;
     percentChange: number;
+    hideAmounts?: boolean;
 }
 
 export function NetWorthChart({
     data,
     currentNetWorth,
     percentChange,
+    hideAmounts = false,
 }: NetWorthChartProps) {
     const isPositive = percentChange >= 0;
 
@@ -55,9 +57,8 @@ export function NetWorthChart({
                 }
             />
             <BentoCardContent className="gap-2">
-                {/* Main value */}
                 <div className="flex items-baseline gap-2">
-                    <span className="text-2xl md:text-3xl font-bold text-foreground">
+                    <span className={`text-2xl md:text-3xl font-bold text-foreground ${hideAmounts ? 'blur-md select-none' : ''}`}>
                         {formatCurrency(currentNetWorth)}
                     </span>
                     <span

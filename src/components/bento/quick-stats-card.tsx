@@ -15,6 +15,7 @@ interface FinancialOverviewCardProps {
     data: FinancialOverviewData;
     onAssetsClick?: () => void;
     onLiabilitiesClick?: () => void;
+    hideAmounts?: boolean;
 }
 
 type FinancialTab = 'assets' | 'liabilities';
@@ -23,6 +24,7 @@ export function FinancialOverviewCard({
     data,
     onAssetsClick,
     onLiabilitiesClick,
+    hideAmounts = false,
 }: FinancialOverviewCardProps) {
     const [activeTab, setActiveTab] = useState<FinancialTab>('assets');
 
@@ -76,7 +78,7 @@ export function FinancialOverviewCard({
         >
             <BentoCardHeader
                 title="Financial Overview"
-                subtitle={`Net Worth: ${formatCurrency(netWorth)}`}
+                subtitle={<span className={hideAmounts ? 'blur-sm select-none' : ''}>Net Worth: {formatCurrency(netWorth)}</span>}
                 icon={<activeTabConfig.icon className={`w-4 h-4 ${colors.text}`} />}
             />
 
@@ -104,7 +106,7 @@ export function FinancialOverviewCard({
 
             <BentoCardContent>
                 <div className="flex items-baseline gap-2">
-                    <span className={`text-2xl font-bold ${colors.text}`}>
+                    <span className={`text-2xl font-bold ${colors.text} ${hideAmounts ? 'blur-md select-none' : ''}`}>
                         {formatCurrency(activeData.amount)}
                     </span>
                     <span className="text-sm text-muted-foreground">
