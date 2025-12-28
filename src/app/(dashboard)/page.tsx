@@ -53,7 +53,20 @@ export default function DashboardPage() {
 
     const [isAddingTransaction, setIsAddingTransaction] = useState(false);
     const [addMode, setAddMode] = useState<'camera' | 'text'>('text');
-    const [hideAmounts, setHideAmounts] = useState(false);
+    const [hideAmounts, setHideAmounts] = useState(() => {
+        // Initialize from localStorage (only on client)
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('hideAmounts') === 'true';
+        }
+        return false;
+    });
+
+    // Persist hideAmounts to localStorage
+    const toggleHideAmounts = () => {
+        const newValue = !hideAmounts;
+        setHideAmounts(newValue);
+        localStorage.setItem('hideAmounts', String(newValue));
+    };
 
     // Fetch data from Firestore
     const fetchData = useCallback(async () => {
@@ -178,7 +191,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setHideAmounts(!hideAmounts)}
+                            onClick={toggleHideAmounts}
                             className="w-8 h-8 rounded-full bg-muted/50 flex items-center justify-center hover:bg-muted transition-colors"
                             title={hideAmounts ? 'Show amounts' : 'Hide amounts'}
                         >
