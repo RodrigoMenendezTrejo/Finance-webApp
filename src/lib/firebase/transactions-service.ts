@@ -99,10 +99,39 @@ export async function createTransaction(
     }
 ): Promise<string> {
     return runTransaction(db, async (transaction) => {
-        // Validate splits sum equals transaction amount (with some tolerance for floating point)
-        const splitsSum = data.splits.reduce((sum, split) => sum + Math.abs(split.amount), 0);
-        // For expenses with debt, the sum of absolute values should match
-        // For simple transactions, splits sum should roughly match amount
+        // PHASE 1: ALL READS FIRST
+        // Collect all account references and read them
+        const accountReads: {
+            ref: ReturnType<typeof doc>;
+            split: TransactionSplit;
+            snapshot?: Awaited<ReturnType<typeof transaction.get>>;
+            currentBalance?: number;
+        }[] = [];
+
+        for (const split of data.splits) {
+            const accountRef = doc(db, 'users', userId, 'accounts', split.accountId);
+            accountReads.push({ ref: accountRef, split });
+        }
+
+        // Perform all reads
+        for (const accountRead of accountReads) {
+            const accountSnap = await transaction.get(accountRead.ref);
+            if (!accountSnap.exists()) {
+                throw new Error(`Account ${accountRead.split.accountId} not found`);
+            }
+            accountRead.snapshot = accountSnap;
+            accountRead.currentBalance = (accountSnap.data() as Account).balance;
+        }
+
+        // PHASE 2: ALL WRITES AFTER READS
+        // Update all affected account balances
+        for (const accountRead of accountReads) {
+            const newBalance = accountRead.currentBalance! + accountRead.split.amount;
+            transaction.update(accountRead.ref, {
+                balance: newBalance,
+                updatedAt: serverTimestamp(),
+            });
+        }
 
         // Create transaction document
         const transactionsRef = getTransactionsRef(userId);
@@ -119,24 +148,6 @@ export async function createTransaction(
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         };
-
-        // Update all affected account balances
-        for (const split of data.splits) {
-            const accountRef = doc(db, 'users', userId, 'accounts', split.accountId);
-            const accountSnap = await transaction.get(accountRef);
-
-            if (!accountSnap.exists()) {
-                throw new Error(`Account ${split.accountId} not found`);
-            }
-
-            const account = accountSnap.data() as Account;
-            const newBalance = account.balance + split.amount;
-
-            transaction.update(accountRef, {
-                balance: newBalance,
-                updatedAt: serverTimestamp(),
-            });
-        }
 
         transaction.set(newTransactionRef, transactionData);
 
@@ -194,6 +205,7 @@ export async function deleteTransaction(
     transactionId: string
 ): Promise<void> {
     return runTransaction(db, async (transaction) => {
+        // PHASE 1: ALL READS FIRST
         const transactionRef = doc(db, 'users', userId, 'transactions', transactionId);
         const transactionSnap = await transaction.get(transactionRef);
 
@@ -203,17 +215,31 @@ export async function deleteTransaction(
 
         const txData = transactionSnap.data() as Transaction;
 
-        // Reverse all balance updates
+        // Read all account balances first
+        const accountReads: {
+            ref: ReturnType<typeof doc>;
+            split: TransactionSplit;
+            currentBalance?: number;
+            exists: boolean;
+        }[] = [];
+
         for (const split of txData.splits) {
             const accountRef = doc(db, 'users', userId, 'accounts', split.accountId);
             const accountSnap = await transaction.get(accountRef);
+            accountReads.push({
+                ref: accountRef,
+                split,
+                currentBalance: accountSnap.exists() ? (accountSnap.data() as Account).balance : 0,
+                exists: accountSnap.exists(),
+            });
+        }
 
-            if (accountSnap.exists()) {
-                const account = accountSnap.data() as Account;
-                // Reverse the split amount
-                const newBalance = account.balance - split.amount;
-
-                transaction.update(accountRef, {
+        // PHASE 2: ALL WRITES AFTER READS
+        // Reverse all balance updates
+        for (const accountRead of accountReads) {
+            if (accountRead.exists) {
+                const newBalance = accountRead.currentBalance! - accountRead.split.amount;
+                transaction.update(accountRead.ref, {
                     balance: newBalance,
                     updatedAt: serverTimestamp(),
                 });
