@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { toast } from 'sonner';
 import { BentoGrid } from '@/components/bento/bento-grid';
 import { NetWorthChart } from '@/components/bento/net-worth-chart';
 import { ReceivablesCard } from '@/components/bento/receivables-card';
@@ -74,7 +75,36 @@ export default function DashboardPage() {
 
         try {
             // Auto-process any due recurring transactions
-            await processDueRecurring(user.uid);
+            const processedItems = await processDueRecurring(user.uid);
+
+            // Show toast notification for each processed item
+            if (processedItems.length > 0) {
+                const formatCurrency = (value: number) => {
+                    return new Intl.NumberFormat('es-ES', {
+                        style: 'currency',
+                        currency: 'EUR',
+                    }).format(value);
+                };
+
+                processedItems.forEach((item, index) => {
+                    // Stagger toasts slightly for better UX
+                    setTimeout(() => {
+                        if (item.type === 'income') {
+                            toast.success(`💰 Income received`, {
+                                description: `${item.name}: +${formatCurrency(item.amount)}`,
+                            });
+                        } else if (item.type === 'subscription') {
+                            toast.info(`📍 Subscription charged`, {
+                                description: `${item.name}: -${formatCurrency(item.amount)}`,
+                            });
+                        } else {
+                            toast.info(`📋 Bill paid`, {
+                                description: `${item.name}: -${formatCurrency(item.amount)}`,
+                            });
+                        }
+                    }, index * 500); // 500ms delay between each toast
+                });
+            }
 
             // Fetch all accounts
             const allAccounts = await getAccounts(user.uid);

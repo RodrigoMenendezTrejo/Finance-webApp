@@ -203,11 +203,18 @@ function getDaysInMonth(year: number, month: number): number {
     return new Date(year, month + 1, 0).getDate();
 }
 
+// Processed recurring item info for notifications
+export interface ProcessedRecurringItem {
+    name: string;
+    amount: number;
+    type: RecurringType;
+}
+
 // Process due recurring transactions
-export async function processDueRecurring(userId: string): Promise<number> {
+export async function processDueRecurring(userId: string): Promise<ProcessedRecurringItem[]> {
     const all = await getRecurringTransactions(userId);
     const now = new Date();
-    let processedCount = 0;
+    const processedItems: ProcessedRecurringItem[] = [];
 
     for (const recurring of all) {
         if (!recurring.isActive) continue;
@@ -247,14 +254,19 @@ export async function processDueRecurring(userId: string): Promise<number> {
                     lastProcessed: Timestamp.fromDate(now),
                 });
 
-                processedCount++;
+                // Add to processed items for notification
+                processedItems.push({
+                    name: recurring.name,
+                    amount: recurring.amount,
+                    type: recurring.type,
+                });
             } catch (error) {
                 console.error(`Error processing recurring ${recurring.id}:`, error);
             }
         }
     }
 
-    return processedCount;
+    return processedItems;
 }
 
 // Get monthly total for subscriptions/bills

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/firebase/auth-context";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import "./globals.css";
@@ -56,7 +57,20 @@ export default function RootLayout({
             {children}
           </AuthGuard>
         </AuthProvider>
+        <Toaster
+          position="top-center"
+          richColors
+          theme="dark"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: '#1e293b',
+              border: '1px solid #334155',
+            },
+          }}
+        />
       </body>
     </html>
   );
 }
+
