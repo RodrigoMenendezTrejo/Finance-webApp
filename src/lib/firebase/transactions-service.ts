@@ -278,16 +278,19 @@ export async function getNetWorthHistory(
         case '1M':
             startDate = new Date(now);
             startDate.setMonth(startDate.getMonth() - 1);
-            pointCount = 30; // Daily points
-            labelFormat = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
+            pointCount = 5; // Weekly points (5 weeks for cleaner display)
+            labelFormat = (d) => {
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return `${months[d.getMonth()]} ${d.getDate()}`;
+            };
             break;
         case '6M':
             startDate = new Date(now);
             startDate.setMonth(startDate.getMonth() - 6);
-            pointCount = 26; // Weekly points
+            pointCount = 7; // Monthly points (one per month)
             labelFormat = (d) => {
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                return `${d.getDate()} ${months[d.getMonth()]}`;
+                return months[d.getMonth()];
             };
             break;
         case '1Y':

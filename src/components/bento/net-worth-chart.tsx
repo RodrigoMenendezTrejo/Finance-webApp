@@ -53,7 +53,7 @@ export function NetWorthChart({
         }).format(value);
     };
 
-    // Calculate dynamic Y-axis domain based on data - tight fit to show movement
+    // Calculate dynamic Y-axis domain based on data - round to nice intervals
     const yAxisDomain = useMemo(() => {
         if (!data || data.length === 0) return [0, 1000];
 
@@ -63,23 +63,26 @@ export function NetWorthChart({
         const minValue = Math.min(...allValues);
         const maxValue = Math.max(...allValues);
 
-        // Use tight 5% padding for more dramatic visualization of changes
+        // Calculate a nice interval (100, 50, or 10 depending on range)
         const range = maxValue - minValue;
-        const padding = Math.max(range * 0.05, 10); // At least €10 padding, 5% of range
+        let interval = 100;
+        if (range < 200) interval = 50;
+        if (range < 50) interval = 10;
 
-        // Don't round to 100s - use precise values for tighter fit
-        const yMin = Math.max(0, minValue - padding);
-        const yMax = maxValue + padding;
+        // Round to nice intervals with padding to center the line
+        const yMin = Math.max(0, Math.floor(minValue / interval) * interval - interval);
+        const yMax = Math.ceil(maxValue / interval) * interval + interval;
 
         return [yMin, yMax];
     }, [data]);
 
-    // Format Y-axis label to show proper values
+    // Format Y-axis label - always show round integers
     const formatYAxis = (value: number) => {
-        if (value >= 1000) {
-            return `€${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+        const rounded = Math.round(value);
+        if (rounded >= 1000) {
+            return `€${(rounded / 1000).toFixed(rounded % 1000 === 0 ? 0 : 1)}k`;
         }
-        return `€${value}`;
+        return `€${rounded}`;
     };
 
     const periods: ChartPeriod[] = ['1M', '6M', '1Y'];
@@ -177,7 +180,9 @@ export function NetWorthChart({
                                 axisLine={false}
                                 tickLine={false}
                                 tickFormatter={formatYAxis}
-                                width={45}
+                                width={50}
+                                tickCount={5}
+                                allowDecimals={false}
                             />
                             <Tooltip
                                 contentStyle={{
