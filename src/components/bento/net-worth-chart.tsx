@@ -65,9 +65,9 @@ export function NetWorthChart({
     // Format Y-axis label to show proper values
     const formatYAxis = (value: number) => {
         if (value >= 1000) {
-            return `€${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+            return `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
         }
-        return `€${value}`;
+        return `${value}`;
     };
 
     return (

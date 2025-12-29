@@ -76,14 +76,24 @@ export async function createRecurring(
     // Use startDate if provided, otherwise calculate from today
     const baseDate = data.startDate || new Date();
     const dayOfMonth = data.startDate ? data.startDate.getDate() : data.dayOfMonth;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    // Calculate next due date
-    const nextDueDate = calculateNextDueDate(
-        baseDate,
-        data.frequency,
-        dayOfMonth,
-        data.dayOfWeek
-    );
+    // If startDate is provided and is today or in the future, use it directly
+    // Otherwise, calculate the next due date from the base date
+    let nextDueDate: Date;
+    if (data.startDate && data.startDate >= today) {
+        // Use the provided start date directly as the first due date
+        nextDueDate = new Date(data.startDate);
+    } else {
+        // Calculate next due date (for items starting in the past or without a start date)
+        nextDueDate = calculateNextDueDate(
+            baseDate,
+            data.frequency,
+            dayOfMonth,
+            data.dayOfWeek
+        );
+    }
 
     const newRecurring: Record<string, unknown> = {
         type: data.type,
