@@ -312,6 +312,9 @@ function AccountsContent() {
                         { accountId: selectedAccount.id, amount: -selectedAccount.balance },
                     ],
                 });
+
+                // Delete the receivable since it's now settled (balance is 0)
+                await deleteAccount(user.uid, selectedAccount.id);
             }
 
             await refreshAccounts();

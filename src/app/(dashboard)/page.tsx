@@ -12,7 +12,7 @@ import { RecurringCard } from '@/components/bento/subscriptions-card';
 import { FABButton } from '@/components/ui/fab-button';
 import { AddTransactionSheet } from '@/components/forms/add-transaction-sheet';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { getAccounts, getTotalByType } from '@/lib/firebase/accounts-service';
+import { getAccounts, getTotalByType, deleteAccount } from '@/lib/firebase/accounts-service';
 import { getTransactions, getTotalSpending } from '@/lib/firebase/transactions-service';
 import { getRecurringTransactions, getMonthlyRecurringTotal, processDueRecurring } from '@/lib/firebase/recurring-service';
 import { Account } from '@/types/firestore';
@@ -108,12 +108,25 @@ export default function DashboardPage() {
 
             // Fetch all accounts
             const allAccounts = await getAccounts(user.uid);
-            setAccounts(allAccounts);
+
+            // Auto-cleanup: delete any receivables with 0 balance
+            const zeroBalanceReceivables = allAccounts.filter(
+                a => a.type === 'receivable' && a.balance === 0
+            );
+            for (const receivable of zeroBalanceReceivables) {
+                await deleteAccount(user.uid, receivable.id);
+            }
+
+            // Filter out the deleted accounts for state
+            const activeAccounts = allAccounts.filter(
+                a => !(a.type === 'receivable' && a.balance === 0)
+            );
+            setAccounts(activeAccounts);
 
             // Calculate totals by type
-            const assets = allAccounts.filter(a => a.type === 'asset').reduce((sum, a) => sum + a.balance, 0);
-            const liabilities = allAccounts.filter(a => a.type === 'liability').reduce((sum, a) => sum + a.balance, 0);
-            const receivables = allAccounts.filter(a => a.type === 'receivable').reduce((sum, a) => sum + a.balance, 0);
+            const assets = activeAccounts.filter(a => a.type === 'asset').reduce((sum, a) => sum + a.balance, 0);
+            const liabilities = activeAccounts.filter(a => a.type === 'liability').reduce((sum, a) => sum + a.balance, 0);
+            const receivables = activeAccounts.filter(a => a.type === 'receivable').reduce((sum, a) => sum + a.balance, 0);
 
             setTotalAssets(assets);
             setTotalLiabilities(liabilities);
