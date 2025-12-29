@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { BentoGrid } from '@/components/bento/bento-grid';
-import { NetWorthChart, ChartPeriod } from '@/components/bento/net-worth-chart';
+import { NetWorthChart } from '@/components/bento/net-worth-chart';
 import { ReceivablesCard } from '@/components/bento/receivables-card';
 import { FinancialOverviewCard, RecentActivityCard } from '@/components/bento/quick-stats-card';
 import { RecurringCard } from '@/components/bento/subscriptions-card';
@@ -12,7 +12,7 @@ import { FABButton } from '@/components/ui/fab-button';
 import { AddTransactionSheet } from '@/components/forms/add-transaction-sheet';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getAccounts, getTotalByType } from '@/lib/firebase/accounts-service';
-import { getTransactions, getTotalSpending, getNetWorthHistory } from '@/lib/firebase/transactions-service';
+import { getTransactions, getTotalSpending } from '@/lib/firebase/transactions-service';
 import { getRecurringTransactions, getMonthlyRecurringTotal, processDueRecurring } from '@/lib/firebase/recurring-service';
 import { Account } from '@/types/firestore';
 
@@ -50,11 +50,6 @@ export default function DashboardPage() {
         income: { total: 0, count: 0 },
         bills: { total: 0, count: 0 },
     });
-
-    // Chart state
-    const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('6M');
-    const [chartData, setChartData] = useState<{ date: string; assets: number; liabilities: number; netWorth: number }[]>([]);
-    const [isChartLoading, setIsChartLoading] = useState(false);
 
     const [isAddingTransaction, setIsAddingTransaction] = useState(false);
     const [addMode, setAddMode] = useState<'camera' | 'text'>('text');
@@ -160,40 +155,18 @@ export default function DashboardPage() {
             avatarColor: getAvatarColor(a.name),
         }));
 
-    // Fetch chart data based on selected period
-    const fetchChartData = useCallback(async (period: ChartPeriod) => {
-        if (!user) return;
-        setIsChartLoading(true);
-        try {
-            const historyData = await getNetWorthHistory(
-                user.uid,
-                period,
-                totalAssets,
-                totalLiabilities
-            );
-            setChartData(historyData);
-        } catch (error) {
-            console.error('Error fetching chart data:', error);
-        } finally {
-            setIsChartLoading(false);
-        }
-    }, [user, totalAssets, totalLiabilities]);
+    // Mock net worth history (will be replaced with real data later)
+    const netWorthData = [
+        { month: 'Jul', assets: netWorth * 0.7, liabilities: totalLiabilities, netWorth: netWorth * 0.65 },
+        { month: 'Aug', assets: netWorth * 0.75, liabilities: totalLiabilities, netWorth: netWorth * 0.7 },
+        { month: 'Sep', assets: netWorth * 0.8, liabilities: totalLiabilities, netWorth: netWorth * 0.78 },
+        { month: 'Oct', assets: netWorth * 0.85, liabilities: totalLiabilities, netWorth: netWorth * 0.83 },
+        { month: 'Nov', assets: netWorth * 0.95, liabilities: totalLiabilities, netWorth: netWorth * 0.92 },
+        { month: 'Dec', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
+    ];
 
-    // Fetch chart data when period or totals change
-    useEffect(() => {
-        if (totalAssets > 0 || totalLiabilities > 0) {
-            fetchChartData(chartPeriod);
-        }
-    }, [chartPeriod, totalAssets, totalLiabilities, fetchChartData]);
-
-    // Handle period change
-    const handlePeriodChange = (period: ChartPeriod) => {
-        setChartPeriod(period);
-    };
-
-    // Calculate percent change from chart data
-    const percentChange = chartData.length >= 2
-        ? ((chartData[chartData.length - 1]?.netWorth - chartData[0]?.netWorth) / (chartData[0]?.netWorth || 1)) * 100
+    const percentChange = netWorthData.length >= 2
+        ? ((netWorthData[5].netWorth - netWorthData[4].netWorth) / (netWorthData[4].netWorth || 1)) * 100
         : 0;
 
     // Show loading while fetching
@@ -244,13 +217,10 @@ export default function DashboardPage() {
             <BentoGrid>
                 {/* Net Worth Chart - Large cell */}
                 <NetWorthChart
-                    data={chartData}
+                    data={netWorthData}
                     currentNetWorth={netWorth}
                     percentChange={percentChange}
                     hideAmounts={hideAmounts}
-                    selectedPeriod={chartPeriod}
-                    onPeriodChange={handlePeriodChange}
-                    isLoading={isChartLoading}
                 />
 
                 {/* Financial Overview - Assets & Liabilities */}
