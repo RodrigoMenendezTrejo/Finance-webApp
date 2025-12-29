@@ -85,12 +85,24 @@ export function NetWorthChart({
         return [yMin, yMax];
     }, [data]);
 
-    // Format Y-axis label to show proper values
+    // Format Y-axis label to show max 3 significant figures
+    // €300.45 -> "300", €10,341 -> "10.3k", €648,198 -> "648k"
     const formatYAxis = (value: number) => {
-        if (value >= 1000) {
-            return `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+        if (value >= 1000000) {
+            // Millions: show as Xm or X.Xm (max 3 figures)
+            const millions = value / 1000000;
+            return millions >= 100 ? `${Math.round(millions)}m` :
+                millions >= 10 ? `${millions.toFixed(0)}m` :
+                    `${millions.toFixed(1)}m`;
+        } else if (value >= 1000) {
+            // Thousands: show as Xk or X.Xk or XXXk (max 3 figures)
+            const thousands = value / 1000;
+            return thousands >= 100 ? `${Math.round(thousands)}k` :
+                thousands >= 10 ? `${Math.round(thousands)}k` :
+                    `${thousands.toFixed(1)}k`;
         }
-        return `${value}`;
+        // Under 1000: just show the integer
+        return `${Math.round(value)}`;
     };
 
     return (
@@ -128,8 +140,8 @@ export function NetWorthChart({
                                 key={range}
                                 onClick={() => setTimeRange(range)}
                                 className={`px-2 py-1 text-xs font-medium rounded-md transition-all ${timeRange === range
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover:text-foreground'
                                     }`}
                             >
                                 {range}
