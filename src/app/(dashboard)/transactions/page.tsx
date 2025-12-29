@@ -271,7 +271,7 @@ export default function TransactionsPage() {
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">Date</span>
                                 <span className="font-medium">
-                                    {selectedTransaction?.date.toDate().toLocaleDateString()}
+                                    {selectedTransaction?.date.toDate().toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric', year: 'numeric' })}
                                 </span>
                             </div>
                             {selectedTransaction?.notes && (

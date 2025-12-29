@@ -378,7 +378,7 @@ export default function RecurringPage() {
                                                 <p className="text-xs text-muted-foreground">
                                                     {formatCurrency(item.amount)} / {item.frequency}
                                                     {' · Next: '}
-                                                    {item.nextDueDate.toDate().toLocaleDateString()}
+                                                    {item.nextDueDate.toDate().toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric', year: 'numeric' })}
                                                 </p>
                                                 <p className="text-xs text-purple-400">
                                                     Total spent: {formatCurrency(calculateTotalSpent(item))}
