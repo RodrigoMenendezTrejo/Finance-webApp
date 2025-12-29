@@ -185,18 +185,43 @@ export default function DashboardPage() {
             avatarColor: getAvatarColor(a.name),
         }));
 
-    // Mock net worth history (will be replaced with real data later)
-    const netWorthData = [
-        { month: 'Jul', assets: netWorth * 0.7, liabilities: totalLiabilities, netWorth: netWorth * 0.65 },
-        { month: 'Aug', assets: netWorth * 0.75, liabilities: totalLiabilities, netWorth: netWorth * 0.7 },
-        { month: 'Sep', assets: netWorth * 0.8, liabilities: totalLiabilities, netWorth: netWorth * 0.78 },
-        { month: 'Oct', assets: netWorth * 0.85, liabilities: totalLiabilities, netWorth: netWorth * 0.83 },
-        { month: 'Nov', assets: netWorth * 0.95, liabilities: totalLiabilities, netWorth: netWorth * 0.92 },
-        { month: 'Dec', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
+    // Generate net worth history data for different time ranges
+    // 1 Month (4 weeks) - shows weekly data
+    const netWorthData1M = [
+        { label: 'Week 1', assets: netWorth * 0.94, liabilities: totalLiabilities, netWorth: netWorth * 0.93 },
+        { label: 'Week 2', assets: netWorth * 0.96, liabilities: totalLiabilities, netWorth: netWorth * 0.95 },
+        { label: 'Week 3', assets: netWorth * 0.98, liabilities: totalLiabilities, netWorth: netWorth * 0.97 },
+        { label: 'Week 4', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
     ];
 
-    const percentChange = netWorthData.length >= 2
-        ? ((netWorthData[5].netWorth - netWorthData[4].netWorth) / (netWorthData[4].netWorth || 1)) * 100
+    // 6 Months - shows monthly data
+    const netWorthData6M = [
+        { label: 'Jul', assets: netWorth * 0.7, liabilities: totalLiabilities, netWorth: netWorth * 0.65 },
+        { label: 'Aug', assets: netWorth * 0.75, liabilities: totalLiabilities, netWorth: netWorth * 0.7 },
+        { label: 'Sep', assets: netWorth * 0.8, liabilities: totalLiabilities, netWorth: netWorth * 0.78 },
+        { label: 'Oct', assets: netWorth * 0.85, liabilities: totalLiabilities, netWorth: netWorth * 0.83 },
+        { label: 'Nov', assets: netWorth * 0.95, liabilities: totalLiabilities, netWorth: netWorth * 0.92 },
+        { label: 'Dec', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
+    ];
+
+    // 1 Year (12 months) - shows monthly data
+    const netWorthData1Y = [
+        { label: 'Jan', assets: netWorth * 0.5, liabilities: totalLiabilities * 1.2, netWorth: netWorth * 0.4 },
+        { label: 'Feb', assets: netWorth * 0.52, liabilities: totalLiabilities * 1.15, netWorth: netWorth * 0.45 },
+        { label: 'Mar', assets: netWorth * 0.55, liabilities: totalLiabilities * 1.1, netWorth: netWorth * 0.5 },
+        { label: 'Apr', assets: netWorth * 0.58, liabilities: totalLiabilities * 1.05, netWorth: netWorth * 0.55 },
+        { label: 'May', assets: netWorth * 0.62, liabilities: totalLiabilities, netWorth: netWorth * 0.58 },
+        { label: 'Jun', assets: netWorth * 0.65, liabilities: totalLiabilities, netWorth: netWorth * 0.62 },
+        { label: 'Jul', assets: netWorth * 0.7, liabilities: totalLiabilities, netWorth: netWorth * 0.65 },
+        { label: 'Aug', assets: netWorth * 0.75, liabilities: totalLiabilities, netWorth: netWorth * 0.7 },
+        { label: 'Sep', assets: netWorth * 0.8, liabilities: totalLiabilities, netWorth: netWorth * 0.78 },
+        { label: 'Oct', assets: netWorth * 0.85, liabilities: totalLiabilities, netWorth: netWorth * 0.83 },
+        { label: 'Nov', assets: netWorth * 0.95, liabilities: totalLiabilities, netWorth: netWorth * 0.92 },
+        { label: 'Dec', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
+    ];
+
+    const percentChange = netWorthData6M.length >= 2
+        ? ((netWorthData6M[5].netWorth - netWorthData6M[4].netWorth) / (netWorthData6M[4].netWorth || 1)) * 100
         : 0;
 
     // Show loading while fetching
@@ -247,7 +272,9 @@ export default function DashboardPage() {
             <BentoGrid>
                 {/* Net Worth Chart - Large cell */}
                 <NetWorthChart
-                    data={netWorthData}
+                    data1M={netWorthData1M}
+                    data6M={netWorthData6M}
+                    data1Y={netWorthData1Y}
                     currentNetWorth={netWorth}
                     percentChange={percentChange}
                     hideAmounts={hideAmounts}

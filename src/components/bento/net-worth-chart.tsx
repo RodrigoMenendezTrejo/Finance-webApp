@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import {
     AreaChart,
@@ -13,27 +13,50 @@ import {
 } from 'recharts';
 import { BentoCard, BentoCardHeader, BentoCardContent } from './bento-grid';
 
-interface NetWorthData {
-    month: string;
+interface NetWorthDataPoint {
+    label: string;
     assets: number;
     liabilities: number;
     netWorth: number;
 }
 
+export type TimeRange = '1M' | '6M' | '1Y';
+
 interface NetWorthChartProps {
-    data: NetWorthData[];
+    data1M: NetWorthDataPoint[];
+    data6M: NetWorthDataPoint[];
+    data1Y: NetWorthDataPoint[];
     currentNetWorth: number;
     percentChange: number;
     hideAmounts?: boolean;
 }
 
+const timeRangeLabels: Record<TimeRange, string> = {
+    '1M': 'Last 4 weeks',
+    '6M': 'Last 6 months',
+    '1Y': 'Last 12 months',
+};
+
 export function NetWorthChart({
-    data,
+    data1M,
+    data6M,
+    data1Y,
     currentNetWorth,
     percentChange,
     hideAmounts = false,
 }: NetWorthChartProps) {
+    const [timeRange, setTimeRange] = useState<TimeRange>('6M');
     const isPositive = percentChange >= 0;
+
+    // Get data based on selected time range
+    const data = useMemo(() => {
+        switch (timeRange) {
+            case '1M': return data1M;
+            case '6M': return data6M;
+            case '1Y': return data1Y;
+            default: return data6M;
+        }
+    }, [timeRange, data1M, data6M, data1Y]);
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('es-ES', {
@@ -74,7 +97,7 @@ export function NetWorthChart({
         <BentoCard colSpan={2} rowSpan={2} className="bg-gradient-to-br from-slate-900 to-slate-800">
             <BentoCardHeader
                 title="Net Worth"
-                subtitle="Last 6 months"
+                subtitle={timeRangeLabels[timeRange]}
                 icon={
                     isPositive ? (
                         <TrendingUp className="w-5 h-5 text-emerald-500" />
@@ -84,17 +107,35 @@ export function NetWorthChart({
                 }
             />
             <BentoCardContent className="gap-2">
-                <div className="flex items-baseline gap-2">
-                    <span className={`text-2xl md:text-3xl font-bold text-foreground ${hideAmounts ? 'blur-md select-none' : ''}`}>
-                        {formatCurrency(currentNetWorth)}
-                    </span>
-                    <span
-                        className={`text-sm font-medium ${isPositive ? 'text-emerald-500' : 'text-rose-500'
-                            }`}
-                    >
-                        {isPositive ? '+' : ''}
-                        {percentChange.toFixed(1)}%
-                    </span>
+                {/* Amount and Time Range Selector */}
+                <div className="flex items-center justify-between">
+                    <div className="flex items-baseline gap-2">
+                        <span className={`text-2xl md:text-3xl font-bold text-foreground ${hideAmounts ? 'blur-md select-none' : ''}`}>
+                            {formatCurrency(currentNetWorth)}
+                        </span>
+                        <span
+                            className={`text-sm font-medium ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}
+                        >
+                            {isPositive ? '+' : ''}
+                            {percentChange.toFixed(1)}%
+                        </span>
+                    </div>
+
+                    {/* Time Range Toggle */}
+                    <div className="flex gap-1 bg-muted/30 rounded-lg p-0.5">
+                        {(['1M', '6M', '1Y'] as TimeRange[]).map((range) => (
+                            <button
+                                key={range}
+                                onClick={() => setTimeRange(range)}
+                                className={`px-2 py-1 text-xs font-medium rounded-md transition-all ${timeRange === range
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                            >
+                                {range}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Chart */}
@@ -130,7 +171,7 @@ export function NetWorthChart({
                                 vertical={false}
                             />
                             <XAxis
-                                dataKey="month"
+                                dataKey="label"
                                 tick={{ fill: '#9ca3af', fontSize: 10 }}
                                 axisLine={false}
                                 tickLine={false}
@@ -181,4 +222,5 @@ export function NetWorthChart({
         </BentoCard>
     );
 }
+
 
