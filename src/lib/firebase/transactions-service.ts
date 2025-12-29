@@ -330,34 +330,42 @@ export async function getNetWorthHistory(
     }
 
     // Calculate balance at each point by working backwards from current
-    // For each point, sum up all transaction impacts after that point
+    const currentNetWorth = currentAssets - currentLiabilities;
     const result: { date: string; assets: number; liabilities: number; netWorth: number }[] = [];
 
-    for (const point of points) {
-        // Sum all transaction impacts after this point
-        let assetDelta = 0;
-        let liabilityDelta = 0;
+    for (let i = 0; i < points.length; i++) {
+        const point = points[i];
+        const isLastPoint = i === points.length - 1;
+
+        // For the LAST point, use exact current values
+        if (isLastPoint) {
+            result.push({
+                date: point.label,
+                assets: currentAssets,
+                liabilities: currentLiabilities,
+                netWorth: currentNetWorth,
+            });
+            continue;
+        }
+
+        // For historical points, calculate by reversing transaction impacts
+        let balanceChange = 0;
 
         for (const tx of transactions) {
             if (tx.date > point.date) {
-                // This transaction happened after the point, so we need to reverse its impact
-                for (const split of tx.splits) {
-                    // We need to determine if this was an asset or liability account
-                    // For simplicity, we'll use the transaction amount directly
-                    // Negative splits typically hit assets, positive splits hit receivables
-                    if (split.amount < 0) {
-                        assetDelta += Math.abs(split.amount); // Reverse the deduction
-                    } else if (!split.isDebtSettlement) {
-                        // Positive split that's not debt settlement could be receivable
-                        liabilityDelta -= split.amount; // This is tricky...
-                    }
+                // This transaction happened after this point
+                // Expenses reduce balance, income increases balance
+                if (tx.type === 'expense') {
+                    balanceChange += tx.amount; // Reverse the expense (add back)
+                } else if (tx.type === 'income') {
+                    balanceChange -= tx.amount; // Reverse the income (subtract)
                 }
             }
         }
 
-        // Historical balance = current - changes since then
-        const assetsAtPoint = Math.max(0, currentAssets - assetDelta);
-        const liabilitiesAtPoint = Math.max(0, currentLiabilities);
+        // Historical values = current values adjusted for changes since then
+        const assetsAtPoint = Math.max(0, currentAssets + balanceChange);
+        const liabilitiesAtPoint = currentLiabilities; // Liabilities don't change from transactions
         const netWorthAtPoint = assetsAtPoint - liabilitiesAtPoint;
 
         result.push({
