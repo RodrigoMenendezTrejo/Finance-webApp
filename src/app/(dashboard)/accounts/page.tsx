@@ -295,7 +295,7 @@ function AccountsContent() {
         setIsSettling(true);
         try {
             // Get user's first asset account to receive payment
-            const assetAccounts = getAccountsByType('asset');
+            const assetAccounts = accounts.filter(a => a.type === 'asset');
             const targetAccountId = assetAccounts[0]?.id;
 
             if (targetAccountId) {
