@@ -2,7 +2,7 @@
 
 import { useState, Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Plus, Wallet, CreditCard, Users, Loader2, Trash2, Check, Pencil, Camera } from 'lucide-react';
+import { ArrowLeft, Plus, Wallet, CreditCard, Users, Loader2, Trash2, Check, Pencil, Camera, ArrowLeftRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getAccounts, createAccount, updateAccount, deleteAccount, markLiabilityPaid, getAccountsByType as getAccountsByTypeFromDb } from '@/lib/firebase/accounts-service';
-import { createTransaction } from '@/lib/firebase/transactions-service';
+import { createTransaction, createTransfer } from '@/lib/firebase/transactions-service';
+import { rebalanceGoalsForNewBalance } from '@/lib/firebase/goals-service';
 import { Account, AccountType } from '@/types/firestore';
 
 const tabConfig = {
@@ -41,6 +42,7 @@ function AccountsContent() {
     const [newAccountBalance, setNewAccountBalance] = useState('');
     const [newAccountIcon, setNewAccountIcon] = useState('');
     const [newAccountCategory, setNewAccountCategory] = useState('');
+    const [newIsGoalAccount, setNewIsGoalAccount] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
 
     // Photo capture state for Add dialog
@@ -55,6 +57,7 @@ function AccountsContent() {
     const [editBalance, setEditBalance] = useState('');
     const [editIcon, setEditIcon] = useState('');
     const [editCategory, setEditCategory] = useState('');
+    const [editIsGoalAccount, setEditIsGoalAccount] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
     // Photo capture state for Edit dialog
@@ -74,6 +77,14 @@ function AccountsContent() {
     const [payFromAccountId, setPayFromAccountId] = useState('');
     const [isPaying, setIsPaying] = useState(false);
     const [assetAccounts, setAssetAccounts] = useState<Account[]>([]);
+
+    // Transfer state
+    const [isTransferOpen, setIsTransferOpen] = useState(false);
+    const [transferFromId, setTransferFromId] = useState('');
+    const [transferToId, setTransferToId] = useState('');
+    const [transferAmount, setTransferAmount] = useState('');
+    const [transferNotes, setTransferNotes] = useState('');
+    const [isTransferring, setIsTransferring] = useState(false);
 
     // Fetch accounts
     useEffect(() => {
@@ -223,6 +234,7 @@ function AccountsContent() {
                 balance: parseFloat(newAccountBalance) || 0,
                 icon: newAccountIcon || accountIcons[activeTab as AccountType][0],
                 category: activeTab === 'receivable' && newAccountCategory.trim() ? newAccountCategory.trim() : undefined,
+                isGoalAccount: activeTab === 'asset' ? newIsGoalAccount : undefined,
             });
 
             await refreshAccounts();
@@ -230,6 +242,7 @@ function AccountsContent() {
             setNewAccountBalance('');
             setNewAccountIcon('');
             setNewAccountCategory('');
+            setNewIsGoalAccount(false);
             setAddPhotoPreview(null);
             setIsAddOpen(false);
         } catch (error) {
@@ -245,6 +258,7 @@ function AccountsContent() {
         setEditBalance(account.balance.toString());
         setEditIcon(account.icon || '');
         setEditCategory(account.category || '');
+        setEditIsGoalAccount(account.isGoalAccount || false);
         setEditPhotoPreview(null);
         setIsEditOpen(true);
     };
@@ -259,6 +273,7 @@ function AccountsContent() {
                 balance: parseFloat(editBalance) || 0,
                 icon: editIcon || selectedAccount.icon,
                 ...(selectedAccount.type === 'receivable' && editCategory.trim() ? { category: editCategory.trim() } : {}),
+                ...(selectedAccount.type === 'asset' ? { isGoalAccount: editIsGoalAccount } : {}),
             });
 
             await refreshAccounts();
@@ -354,6 +369,69 @@ function AccountsContent() {
         }
     };
 
+    const openTransferDialog = () => {
+        const assets = accounts.filter(a => a.type === 'asset');
+        if (assets.length < 2) {
+            alert('You need at least 2 asset accounts to make a transfer.');
+            return;
+        }
+        setTransferFromId(assets[0]?.id || '');
+        setTransferToId(assets[1]?.id || '');
+        setTransferAmount('');
+        setTransferNotes('');
+        setIsTransferOpen(true);
+    };
+
+    const handleTransfer = async () => {
+        if (!user || !transferFromId || !transferToId || transferFromId === transferToId) return;
+
+        const amount = parseFloat(transferAmount);
+        if (amount <= 0) {
+            alert('Please enter a valid amount');
+            return;
+        }
+
+        // Check if source account has enough balance
+        const fromAccount = accounts.find(a => a.id === transferFromId);
+        if (!fromAccount || fromAccount.balance < amount) {
+            alert(`Insufficient balance. Available: €${fromAccount?.balance.toFixed(2) || 0}`);
+            return;
+        }
+
+        setIsTransferring(true);
+        try {
+            await createTransfer(user.uid, {
+                fromAccountId: transferFromId,
+                toAccountId: transferToId,
+                amount,
+                notes: transferNotes,
+            });
+
+            // If source was a Goal Account, rebalance goals
+            if (fromAccount.isGoalAccount) {
+                // Calculate new total in Goal Accounts after transfer
+                const goalAccounts = accounts.filter(a => a.isGoalAccount);
+                const newTotal = goalAccounts.reduce((sum, a) => {
+                    // Subtract the transfer amount from the source account
+                    if (a.id === transferFromId) {
+                        return sum + a.balance - amount;
+                    }
+                    return sum + a.balance;
+                }, 0);
+
+                await rebalanceGoalsForNewBalance(user.uid, newTotal);
+            }
+
+            await refreshAccounts();
+            setIsTransferOpen(false);
+        } catch (error) {
+            console.error('Error creating transfer:', error);
+            alert('Failed to create transfer. Please try again.');
+        } finally {
+            setIsTransferring(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -375,129 +453,150 @@ function AccountsContent() {
                     </button>
                     <h1 className="text-xl font-bold">Accounts</h1>
 
-                    <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-                        <DialogTrigger asChild>
-                            <Button size="sm" className="ml-auto">
-                                <Plus className="w-4 h-4 mr-1" />
-                                Add
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Add {tabConfig[activeTab as keyof typeof tabConfig].label.slice(0, -1)}</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4 pt-4">
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1 block">Name</label>
-                                    <Input
-                                        placeholder={activeTab === 'receivable' ? "Person's name" : 'Account name'}
-                                        value={newAccountName}
-                                        onChange={(e) => setNewAccountName(e.target.value)}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1 block">
-                                        {activeTab === 'receivable' ? 'Amount Owed' : 'Initial Balance'}
-                                    </label>
-                                    <Input
-                                        type="number"
-                                        placeholder="0.00"
-                                        value={newAccountBalance}
-                                        onChange={(e) => setNewAccountBalance(e.target.value)}
-                                    />
-                                </div>
-                                {(activeTab === 'receivable' || activeTab === 'liability') && (
+                    <div className="ml-auto flex gap-2">
+                        <Button size="sm" variant="outline" onClick={openTransferDialog}>
+                            <ArrowLeftRight className="w-4 h-4 mr-1" />
+                            Transfer
+                        </Button>
+                        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                            <DialogTrigger asChild>
+                                <Button size="sm">
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    Add
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Add {tabConfig[activeTab as keyof typeof tabConfig].label.slice(0, -1)}</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 pt-4">
+                                    <div>
+                                        <label className="text-sm text-muted-foreground mb-1 block">Name</label>
+                                        <Input
+                                            placeholder={activeTab === 'receivable' ? "Person's name" : 'Account name'}
+                                            value={newAccountName}
+                                            onChange={(e) => setNewAccountName(e.target.value)}
+                                        />
+                                    </div>
                                     <div>
                                         <label className="text-sm text-muted-foreground mb-1 block">
-                                            {activeTab === 'receivable' ? 'Reason (what do they owe for?)' : 'Reason (what do you owe for?)'}
+                                            {activeTab === 'receivable' ? 'Amount Owed' : 'Initial Balance'}
                                         </label>
-                                        <div className="flex gap-2">
-                                            <Input
-                                                placeholder="e.g., Food, Gas, Rent split"
-                                                value={newAccountCategory}
-                                                onChange={(e) => setNewAccountCategory(e.target.value)}
-                                                className="flex-1"
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                onClick={() => addFileInputRef.current?.click()}
-                                                title="Take photo to detect category"
-                                            >
-                                                <Camera className="w-4 h-4" />
-                                            </Button>
-                                            <input
-                                                ref={addFileInputRef}
-                                                type="file"
-                                                accept="image/*"
-                                                capture="environment"
-                                                onChange={handleAddPhotoSelect}
-                                                className="hidden"
-                                            />
-                                        </div>
-                                        {addPhotoPreview && (
-                                            <div className="mt-3 space-y-2">
-                                                <div className="relative inline-block">
-                                                    <img
-                                                        src={addPhotoPreview}
-                                                        alt="Preview"
-                                                        className="rounded-lg h-24 object-cover"
-                                                    />
-                                                    <button
-                                                        onClick={() => setAddPhotoPreview(null)}
-                                                        className="absolute -top-2 -right-2 w-6 h-6 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-sm font-bold"
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </div>
+                                        <Input
+                                            type="number"
+                                            placeholder="0.00"
+                                            value={newAccountBalance}
+                                            onChange={(e) => setNewAccountBalance(e.target.value)}
+                                        />
+                                    </div>
+                                    {(activeTab === 'receivable' || activeTab === 'liability') && (
+                                        <div>
+                                            <label className="text-sm text-muted-foreground mb-1 block">
+                                                {activeTab === 'receivable' ? 'Reason (what do they owe for?)' : 'Reason (what do you owe for?)'}
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    placeholder="e.g., Food, Gas, Rent split"
+                                                    value={newAccountCategory}
+                                                    onChange={(e) => setNewAccountCategory(e.target.value)}
+                                                    className="flex-1"
+                                                />
                                                 <Button
                                                     type="button"
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    onClick={analyzeAddPhoto}
-                                                    disabled={isAddAnalyzing}
-                                                    className="w-full"
+                                                    variant="outline"
+                                                    size="icon"
+                                                    onClick={() => addFileInputRef.current?.click()}
+                                                    title="Take photo to detect category"
                                                 >
-                                                    {isAddAnalyzing ? (
-                                                        <>
-                                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                            Detecting...
-                                                        </>
-                                                    ) : (
-                                                        'Detect Category from Photo'
-                                                    )}
+                                                    <Camera className="w-4 h-4" />
                                                 </Button>
+                                                <input
+                                                    ref={addFileInputRef}
+                                                    type="file"
+                                                    accept="image/*"
+                                                    capture="environment"
+                                                    onChange={handleAddPhotoSelect}
+                                                    className="hidden"
+                                                />
                                             </div>
-                                        )}
-                                    </div>
-                                )}
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1 block">Icon</label>
-                                    <div className="flex gap-2 flex-wrap">
-                                        {accountIcons[activeTab as AccountType].map((icon) => (
-                                            <button
-                                                key={icon}
-                                                onClick={() => setNewAccountIcon(icon)}
-                                                className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl
+                                            {addPhotoPreview && (
+                                                <div className="mt-3 space-y-2">
+                                                    <div className="relative inline-block">
+                                                        <img
+                                                            src={addPhotoPreview}
+                                                            alt="Preview"
+                                                            className="rounded-lg h-24 object-cover"
+                                                        />
+                                                        <button
+                                                            onClick={() => setAddPhotoPreview(null)}
+                                                            className="absolute -top-2 -right-2 w-6 h-6 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-sm font-bold"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        onClick={analyzeAddPhoto}
+                                                        disabled={isAddAnalyzing}
+                                                        className="w-full"
+                                                    >
+                                                        {isAddAnalyzing ? (
+                                                            <>
+                                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                                Detecting...
+                                                            </>
+                                                        ) : (
+                                                            'Detect Category from Photo'
+                                                        )}
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {activeTab === 'asset' && (
+                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                                            <input
+                                                type="checkbox"
+                                                id="newIsGoalAccount"
+                                                checked={newIsGoalAccount}
+                                                onChange={(e) => setNewIsGoalAccount(e.target.checked)}
+                                                className="rounded"
+                                            />
+                                            <label htmlFor="newIsGoalAccount" className="text-sm flex-1">
+                                                <span className="font-medium">🎯 Use as Goal Account</span>
+                                                <span className="text-muted-foreground block text-xs">Link savings goals to this account</span>
+                                            </label>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className="text-sm text-muted-foreground mb-1 block">Icon</label>
+                                        <div className="flex gap-2 flex-wrap">
+                                            {accountIcons[activeTab as AccountType].map((icon) => (
+                                                <button
+                                                    key={icon}
+                                                    onClick={() => setNewAccountIcon(icon)}
+                                                    className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl
                           ${newAccountIcon === icon ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}
                         `}
-                                            >
-                                                {icon}
-                                            </button>
-                                        ))}
+                                                >
+                                                    {icon}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
+                                    <Button
+                                        onClick={handleCreateAccount}
+                                        disabled={isCreating || !newAccountName.trim()}
+                                        className="w-full"
+                                    >
+                                        {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
+                                    </Button>
                                 </div>
-                                <Button
-                                    onClick={handleCreateAccount}
-                                    disabled={isCreating || !newAccountName.trim()}
-                                    className="w-full"
-                                >
-                                    {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
-                                </Button>
-                            </div>
-                        </DialogContent>
-                    </Dialog>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </div>
             </header>
 
@@ -542,7 +641,12 @@ function AccountsContent() {
                                                 {account.icon || '💰'}
                                             </div>
                                             <div className="flex-1">
-                                                <p className="font-medium">{account.name}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-medium">{account.name}</p>
+                                                    {account.isGoalAccount && (
+                                                        <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">🎯 Goal</span>
+                                                    )}
+                                                </div>
                                                 <p className="text-xs text-muted-foreground">
                                                     {type === 'receivable'
                                                         ? `Owes you${account.category ? ` for ${account.category}` : ''}`
@@ -550,7 +654,7 @@ function AccountsContent() {
                                                             ? account.isPaid
                                                                 ? '✓ Paid'
                                                                 : `You owe${account.category ? ` for ${account.category}` : ''}`
-                                                            : 'Balance'}
+                                                            : account.isGoalAccount ? 'Goal Account' : 'Balance'}
                                                 </p>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -667,6 +771,21 @@ function AccountsContent() {
                                         </Button>
                                     </div>
                                 )}
+                            </div>
+                        )}
+                        {selectedAccount?.type === 'asset' && (
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                                <input
+                                    type="checkbox"
+                                    id="editIsGoalAccount"
+                                    checked={editIsGoalAccount}
+                                    onChange={(e) => setEditIsGoalAccount(e.target.checked)}
+                                    className="rounded"
+                                />
+                                <label htmlFor="editIsGoalAccount" className="text-sm flex-1">
+                                    <span className="font-medium">🎯 Use as Goal Account</span>
+                                    <span className="text-muted-foreground block text-xs">Link savings goals to this account</span>
+                                </label>
                             </div>
                         )}
                         <div>
@@ -796,6 +915,79 @@ function AccountsContent() {
                             className="bg-rose-600 hover:bg-rose-700"
                         >
                             {isPaying ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Payment'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Transfer Dialog */}
+            <Dialog open={isTransferOpen} onOpenChange={setIsTransferOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Transfer Between Accounts</DialogTitle>
+                        <DialogDescription>
+                            Move money from one account to another. This will be recorded as a transfer transaction.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                        <div>
+                            <label className="text-sm text-muted-foreground mb-2 block">From Account</label>
+                            <select
+                                value={transferFromId}
+                                onChange={(e) => setTransferFromId(e.target.value)}
+                                className="w-full p-3 rounded-lg bg-muted border border-border text-foreground"
+                            >
+                                {accounts.filter(a => a.type === 'asset').map((account) => (
+                                    <option key={account.id} value={account.id}>
+                                        {account.icon || '💰'} {account.name} ({formatCurrency(account.balance)})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex justify-center">
+                            <ArrowLeftRight className="w-5 h-5 text-muted-foreground rotate-90" />
+                        </div>
+                        <div>
+                            <label className="text-sm text-muted-foreground mb-2 block">To Account</label>
+                            <select
+                                value={transferToId}
+                                onChange={(e) => setTransferToId(e.target.value)}
+                                className="w-full p-3 rounded-lg bg-muted border border-border text-foreground"
+                            >
+                                {accounts.filter(a => a.type === 'asset' && a.id !== transferFromId).map((account) => (
+                                    <option key={account.id} value={account.id}>
+                                        {account.icon || '💰'} {account.name} ({formatCurrency(account.balance)})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-sm text-muted-foreground mb-2 block">Amount</label>
+                            <Input
+                                type="number"
+                                placeholder="0.00"
+                                value={transferAmount}
+                                onChange={(e) => setTransferAmount(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-sm text-muted-foreground mb-2 block">Notes (optional)</label>
+                            <Input
+                                placeholder="e.g., Moving to savings"
+                                value={transferNotes}
+                                onChange={(e) => setTransferNotes(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2 mt-4">
+                        <Button variant="outline" onClick={() => setIsTransferOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleTransfer}
+                            disabled={isTransferring || !transferFromId || !transferToId || transferFromId === transferToId}
+                        >
+                            {isTransferring ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Transfer'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

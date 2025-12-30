@@ -184,7 +184,7 @@ export function QuickStatsCard({
     );
 }
 
-// Recent activity card - now full width
+// Recent activity card - now half width with amber color
 interface RecentActivityCardProps {
     count: number;
     onClick?: () => void;
@@ -192,16 +192,64 @@ interface RecentActivityCardProps {
 
 export function RecentActivityCard({ count, onClick }: RecentActivityCardProps) {
     return (
-        <BentoCard colSpan={2} rowSpan={1} onClick={onClick}>
+        <BentoCard
+            colSpan={1}
+            rowSpan={1}
+            onClick={onClick}
+            className="bg-gradient-to-br from-amber-500/10 to-amber-600/5"
+        >
             <BentoCardHeader
                 title="Recent Transactions"
                 subtitle="this week"
-                icon={<ArrowRightLeft className="w-4 h-4" />}
+                icon={<ArrowRightLeft className="w-4 h-4 text-amber-500" />}
             />
             <BentoCardContent>
-                <span className="text-2xl font-bold text-foreground">{count}</span>
+                <span className="text-2xl font-bold text-amber-500">{count}</span>
                 <span className="text-sm text-muted-foreground ml-2">transactions</span>
             </BentoCardContent>
         </BentoCard>
     );
 }
+
+// Goals summary card
+interface GoalsCardProps {
+    goalCount: number;
+    totalProgress: number; // 0-100
+    onClick?: () => void;
+}
+
+export function GoalsCard({ goalCount, totalProgress, onClick }: GoalsCardProps) {
+    return (
+        <BentoCard
+            colSpan={1}
+            rowSpan={1}
+            onClick={onClick}
+            className="bg-gradient-to-br from-cyan-500/10 to-cyan-600/5"
+        >
+            <BentoCardHeader
+                title="Savings Goals"
+                subtitle={goalCount > 0 ? `${goalCount} active` : 'Set your goals'}
+                icon={<PiggyBank className="w-4 h-4 text-cyan-500" />}
+            />
+            <BentoCardContent>
+                {goalCount > 0 ? (
+                    <div className="w-full">
+                        <div className="flex justify-between text-sm mb-1">
+                            <span className="text-muted-foreground">Progress</span>
+                            <span className="font-medium text-cyan-500">{totalProgress.toFixed(0)}%</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-cyan-500 rounded-full transition-all"
+                                style={{ width: `${Math.min(totalProgress, 100)}%` }}
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <span className="text-sm text-muted-foreground">Tap to start</span>
+                )}
+            </BentoCardContent>
+        </BentoCard>
+    );
+}
+

@@ -15,6 +15,7 @@ export interface Account {
     isPaid?: boolean; // For liabilities: has this been paid?
     paidFromAccountId?: string; // For liabilities: which asset account was used to pay
     paidAt?: Timestamp; // For liabilities: when was it paid
+    isGoalAccount?: boolean; // Designate as a savings/goal account
     createdAt: Timestamp;
     updatedAt: Timestamp;
 }
@@ -66,7 +67,22 @@ export interface UserProfile {
     displayName: string;
     photoURL?: string | null;
     defaultCurrency: string;
+    autoSuggestGoals?: boolean; // Suggest allocations on income (default true)
     createdAt: Timestamp;
+}
+
+// Savings Goal
+export interface SavingsGoal {
+    id: string;
+    name: string;                   // "Vacation", "Emergency Fund"
+    targetAmount: number;
+    currentAmount: number;          // Allocated so far
+    deadline?: Timestamp;           // Optional target date
+    linkedAccountId?: string;       // Link to a goal account (optional)
+    priority: number;               // 1 = highest priority
+    icon?: string;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
 }
 
 // AI Receipt parsing result
@@ -92,3 +108,4 @@ export interface NetWorthSnapshot {
     netWorth: number;        // assets + receivables - liabilities
     createdAt: Timestamp;
 }
+

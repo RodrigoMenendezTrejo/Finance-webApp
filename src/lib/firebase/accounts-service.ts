@@ -79,6 +79,7 @@ export async function createAccount(
         currency?: string;
         icon?: string;
         category?: string; // For receivables: reason (food, gas, etc.)
+        isGoalAccount?: boolean; // For assets: designate as goal account
     }
 ): Promise<string> {
     const accountsRef = getAccountsRef(userId);
@@ -96,6 +97,11 @@ export async function createAccount(
     // Only add category if provided (Firestore rejects undefined)
     if (data.category) {
         newAccount.category = data.category;
+    }
+
+    // Only add isGoalAccount if true (for assets)
+    if (data.isGoalAccount) {
+        newAccount.isGoalAccount = true;
     }
 
     const docRef = await addDoc(accountsRef, newAccount);
@@ -116,12 +122,16 @@ export async function updateAccount(
     });
 }
 
-// Update account balance directly
+// Update account balance by delta (positive adds, negative subtracts)
 export async function updateAccountBalance(
     userId: string,
     accountId: string,
-    newBalance: number
+    delta: number
 ): Promise<void> {
+    const account = await getAccount(userId, accountId);
+    if (!account) throw new Error('Account not found');
+
+    const newBalance = account.balance + delta;
     const accountRef = doc(db, 'users', userId, 'accounts', accountId);
 
     await updateDoc(accountRef, {

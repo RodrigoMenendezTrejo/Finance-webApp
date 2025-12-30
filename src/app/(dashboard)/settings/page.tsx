@@ -1,12 +1,16 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, LogOut, User, CreditCard, Moon, Bell, Shield, HelpCircle } from 'lucide-react';
+import { ArrowLeft, LogOut, User, CreditCard, Moon, Bell, Shield, HelpCircle, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/lib/firebase/auth-context';
+import { updateUserSettings } from '@/lib/firebase/settings-service';
+import { ReactNode } from 'react';
 
 export default function SettingsPage() {
     const router = useRouter();
@@ -26,7 +30,32 @@ export default function SettingsPage() {
             .slice(0, 2);
     };
 
-    const settingsSections = [
+    const handleToggleAutoSuggest = async (checked: boolean) => {
+        if (!user) return;
+        try {
+            // Update local state is handled by auth context real-time listener mostly, 
+            // but for immediate feedback we rely on the prop updating or we could optimistically update if needed.
+            // The auth context listener should pick it up quickly.
+            await updateUserSettings(user.uid, { autoSuggestGoals: checked });
+        } catch (error) {
+            console.error('Error updating settings:', error);
+        }
+    };
+
+    interface SettingsItem {
+        icon: any;
+        label: string;
+        description?: string;
+        onClick?: () => void;
+        action?: ReactNode;
+    }
+
+    interface SettingsSection {
+        title: string;
+        items: SettingsItem[];
+    }
+
+    const settingsSections: SettingsSection[] = [
         {
             title: 'Account',
             items: [
@@ -37,6 +66,17 @@ export default function SettingsPage() {
         {
             title: 'Preferences',
             items: [
+                {
+                    icon: Target,
+                    label: 'Auto-suggest Goals',
+                    description: 'Suggest saving when adding income',
+                    action: (
+                        <Switch
+                            checked={userProfile?.autoSuggestGoals !== false}
+                            onCheckedChange={handleToggleAutoSuggest}
+                        />
+                    )
+                },
                 { icon: Moon, label: 'Appearance', description: 'Dark mode', onClick: () => { } },
                 { icon: Bell, label: 'Notifications', onClick: () => { } },
             ],
@@ -93,9 +133,9 @@ export default function SettingsPage() {
                             <CardContent className="p-0">
                                 {section.items.map((item, index) => (
                                     <div key={item.label}>
-                                        <button
+                                        <div
                                             onClick={item.onClick}
-                                            className="w-full p-4 flex items-center gap-3 hover:bg-muted/50 transition-colors text-left"
+                                            className={`w-full p-4 flex items-center gap-3 ${item.onClick ? 'hover:bg-muted/50 cursor-pointer' : ''} transition-colors text-left`}
                                         >
                                             <item.icon className="w-5 h-5 text-muted-foreground" />
                                             <div className="flex-1">
@@ -106,7 +146,12 @@ export default function SettingsPage() {
                                                     </p>
                                                 )}
                                             </div>
-                                        </button>
+                                            {item.action && (
+                                                <div onClick={(e) => e.stopPropagation()}>
+                                                    {item.action}
+                                                </div>
+                                            )}
+                                        </div>
                                         {index < section.items.length - 1 && <Separator />}
                                     </div>
                                 ))}

@@ -41,11 +41,16 @@ export function ReceivablesCard({
     };
 
     return (
-        <BentoCard colSpan={2} rowSpan={1} onClick={onClick}>
+        <BentoCard
+            colSpan={2}
+            rowSpan={1}
+            onClick={onClick}
+            className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5"
+        >
             <BentoCardHeader
-                title="Money Owed to You"
+                title="Receivables"
                 subtitle={`${receivables.length} people`}
-                icon={<Users className="w-4 h-4" />}
+                icon={<Users className="w-4 h-4 text-emerald-500" />}
             />
             <BentoCardContent className="flex-row items-center justify-between">
                 {/* Avatar stack */}

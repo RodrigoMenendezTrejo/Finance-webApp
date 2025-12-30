@@ -1,22 +1,24 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { BentoGrid } from '@/components/bento/bento-grid';
 import { NetWorthChart } from '@/components/bento/net-worth-chart';
 import { ReceivablesCard } from '@/components/bento/receivables-card';
-import { FinancialOverviewCard, RecentActivityCard } from '@/components/bento/quick-stats-card';
+import { FinancialOverviewCard, RecentActivityCard, GoalsCard } from '@/components/bento/quick-stats-card';
 import { RecurringCard } from '@/components/bento/subscriptions-card';
 import { FABButton } from '@/components/ui/fab-button';
 import { AddTransactionSheet } from '@/components/forms/add-transaction-sheet';
+import { AllocationSuggestSheet } from '@/components/forms/allocation-suggest-sheet';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getAccounts, getTotalByType, deleteAccount } from '@/lib/firebase/accounts-service';
 import { getTransactions, getTotalSpending } from '@/lib/firebase/transactions-service';
 import { getRecurringTransactions, getMonthlyRecurringTotal, processDueRecurring } from '@/lib/firebase/recurring-service';
 import { saveNetWorthSnapshot, getNetWorthHistory, aggregateByWeek, aggregateByMonth } from '@/lib/firebase/networth-service';
-import { Account } from '@/types/firestore';
+import { getGoals, getGoalProgress } from '@/lib/firebase/goals-service';
+import { Account, SavingsGoal } from '@/types/firestore';
 
 // Generate avatar colors based on name
 const getAvatarColor = (name: string) => {
@@ -58,8 +60,19 @@ export default function DashboardPage() {
     const [netWorthData6M, setNetWorthData6M] = useState<{ label: string; assets: number; liabilities: number; netWorth: number }[]>([]);
     const [netWorthData1Y, setNetWorthData1Y] = useState<{ label: string; assets: number; liabilities: number; netWorth: number }[]>([]);
 
+    // Goals data
+    const [goals, setGoals] = useState<SavingsGoal[]>([]);
+
     const [isAddingTransaction, setIsAddingTransaction] = useState(false);
     const [addMode, setAddMode] = useState<'camera' | 'text'>('text');
+
+    // Prevent double processing of recurring transactions (React Strict Mode / fast navigation)
+    const hasProcessedRecurring = useRef(false);
+
+    // Allocation suggestion state for recurring income
+    const [showAllocation, setShowAllocation] = useState(false);
+    const [allocationData, setAllocationData] = useState<{ amount: number; sourceId: string } | null>(null);
+
     const [hideAmounts, setHideAmounts] = useState(() => {
         // Initialize from localStorage (only on client)
         if (typeof window !== 'undefined') {
@@ -80,36 +93,55 @@ export default function DashboardPage() {
         if (!user) return;
 
         try {
-            // Auto-process any due recurring transactions
-            const processedItems = await processDueRecurring(user.uid);
+            // Auto-process any due recurring transactions (only once per page load)
+            if (!hasProcessedRecurring.current) {
+                hasProcessedRecurring.current = true;
+                const processedItems = await processDueRecurring(user.uid);
 
-            // Show toast notification for each processed item
-            if (processedItems.length > 0) {
-                const formatCurrency = (value: number) => {
-                    return new Intl.NumberFormat('es-ES', {
-                        style: 'currency',
-                        currency: 'EUR',
-                    }).format(value);
-                };
+                // Show toast notification for each processed item
+                if (processedItems.length > 0) {
+                    const formatCurrency = (value: number) => {
+                        return new Intl.NumberFormat('es-ES', {
+                            style: 'currency',
+                            currency: 'EUR',
+                        }).format(value);
+                    };
 
-                processedItems.forEach((item, index) => {
-                    // Stagger toasts slightly for better UX
-                    setTimeout(() => {
-                        if (item.type === 'income') {
-                            toast.success(`💰 Income received`, {
-                                description: `${item.name}: +${formatCurrency(item.amount)}`,
-                            });
-                        } else if (item.type === 'subscription') {
-                            toast.info(`📍 Subscription charged`, {
-                                description: `${item.name}: -${formatCurrency(item.amount)}`,
-                            });
-                        } else {
-                            toast.info(`📋 Bill paid`, {
-                                description: `${item.name}: -${formatCurrency(item.amount)}`,
-                            });
+                    processedItems.forEach((item, index) => {
+                        // Stagger toasts slightly for better UX
+                        setTimeout(() => {
+                            if (item.type === 'income') {
+                                toast.success(`💰 Income received`, {
+                                    description: `${item.name}: +${formatCurrency(item.amount)}`,
+                                });
+                            } else if (item.type === 'subscription') {
+                                toast.info(`📍 Subscription charged`, {
+                                    description: `${item.name}: -${formatCurrency(item.amount)}`,
+                                });
+                            } else {
+                                toast.info(`📋 Bill paid`, {
+                                    description: `${item.name}: -${formatCurrency(item.amount)}`,
+                                });
+                            }
+                        }, index * 500); // 500ms delay between each toast
+                    });
+
+                    // Trigger allocation suggestion for income items if user has autoSuggestGoals enabled
+                    const incomeItems = processedItems.filter(item => item.type === 'income');
+                    if (incomeItems.length > 0 && userProfile?.autoSuggestGoals !== false) {
+                        const totalIncome = incomeItems.reduce((sum, item) => sum + item.amount, 0);
+                        // Get the first asset account as source
+                        const assetAccounts = await getAccounts(user.uid);
+                        const sourceAccount = assetAccounts.find(a => a.type === 'asset');
+                        if (sourceAccount) {
+                            setAllocationData({ amount: totalIncome, sourceId: sourceAccount.id });
+                            // Delay to show toasts first
+                            setTimeout(() => {
+                                setShowAllocation(true);
+                            }, (processedItems.length * 500) + 1000);
                         }
-                    }, index * 500); // 500ms delay between each toast
-                });
+                    }
+                }
             }
 
             // Fetch all accounts
@@ -169,6 +201,10 @@ export default function DashboardPage() {
                 income: { total: incomeTotal, count: activeIncome.length },
                 bills: { total: billTotal, count: activeBills.length },
             });
+
+            // Fetch goals for the goals card
+            const goalsData = await getGoals(user.uid);
+            setGoals(goalsData);
 
             // Save today's net worth snapshot
             await saveNetWorthSnapshot(user.uid, {
@@ -345,6 +381,16 @@ export default function DashboardPage() {
                     count={recentCount}
                     onClick={() => router.push('/transactions')}
                 />
+
+                {/* Savings Goals */}
+                <GoalsCard
+                    goalCount={goals.length}
+                    totalProgress={goals.length > 0
+                        ? goals.reduce((sum, g) => sum + getGoalProgress(g), 0) / goals.length
+                        : 0
+                    }
+                    onClick={() => router.push('/goals')}
+                />
             </BentoGrid>
 
             {/* FAB */}
@@ -360,6 +406,27 @@ export default function DashboardPage() {
                 mode={addMode}
                 onSuccess={fetchData}
             />
+
+            {/* Allocation Suggestion Sheet for Recurring Income */}
+            {user && allocationData && (
+                <AllocationSuggestSheet
+                    open={showAllocation}
+                    onOpenChange={(open) => {
+                        setShowAllocation(open);
+                        if (!open) {
+                            setAllocationData(null);
+                        }
+                    }}
+                    userId={user.uid}
+                    incomeAmount={allocationData.amount}
+                    sourceAccountId={allocationData.sourceId}
+                    onComplete={() => {
+                        setShowAllocation(false);
+                        setAllocationData(null);
+                        fetchData();
+                    }}
+                />
+            )}
         </main>
     );
 }

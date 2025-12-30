@@ -285,3 +285,27 @@ export async function getTotalSpending(
     const spending = await getSpendingByCategory(userId, startDate, endDate);
     return Object.values(spending).reduce((sum, amount) => sum + amount, 0);
 }
+
+// Create transfer between accounts
+export async function createTransfer(
+    userId: string,
+    data: {
+        fromAccountId: string;
+        toAccountId: string;
+        amount: number;
+        notes?: string;
+    }
+): Promise<string> {
+    return createTransaction(userId, {
+        date: new Date(),
+        payee: 'Transfer',
+        category: 'transfer',
+        notes: data.notes || '',
+        amount: data.amount,
+        type: 'transfer',
+        splits: [
+            { accountId: data.fromAccountId, amount: -data.amount },
+            { accountId: data.toAccountId, amount: data.amount },
+        ],
+    });
+}

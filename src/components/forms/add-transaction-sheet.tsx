@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { createExpenseWithDebt, createTransaction } from '@/lib/firebase/transactions-service';
 import { createAccount, getAccountsByType } from '@/lib/firebase/accounts-service';
+import { AllocationSuggestSheet } from './allocation-suggest-sheet';
 
 interface AddTransactionSheetProps {
     open: boolean;
@@ -21,7 +22,7 @@ export function AddTransactionSheet({
     mode,
     onSuccess,
 }: AddTransactionSheetProps) {
-    const { user } = useAuth();
+    const { user, userProfile } = useAuth();
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [textInput, setTextInput] = useState('');
@@ -29,6 +30,10 @@ export function AddTransactionSheet({
     const [parsedResult, setParsedResult] = useState<Record<string, unknown> | null>(null);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Allocation Sheet State
+    const [showAllocation, setShowAllocation] = useState(false);
+    const [allocationData, setAllocationData] = useState<{ amount: number; sourceId: string } | null>(null);
 
     // Editable parsed fields
     const [editMerchant, setEditMerchant] = useState('');
@@ -100,7 +105,7 @@ export function AddTransactionSheet({
     };
 
     const handleConfirm = async () => {
-        if (!user || !parsedResult) return;
+        if (!user || !parsedResult || isSaving) return;
 
         // Validate category
         if (!editCategory.trim()) {
@@ -189,25 +194,37 @@ export function AddTransactionSheet({
 
             setSaveSuccess(true);
 
-            // Wait a moment to show success, then close and notify parent
+            // Close normally after success
             setTimeout(() => {
-                setTextInput('');
-                setPreviewImage(null);
-                setParsedResult(null);
-                setSaveSuccess(false);
-                setEditMerchant('');
-                setEditAmount('');
-                setEditCategory('');
-                setTransactionType('expense');
-                setCategoryError(false);
-                onOpenChange(false);
-                onSuccess?.();
-            }, 1000);
+                cleanupAndClose();
+            }, 1500);
 
         } catch (error) {
             console.error('Error saving transaction:', error);
+            alert('Failed to save transaction');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const cleanupAndClose = () => {
+        setTextInput('');
+        setPreviewImage(null);
+        setParsedResult(null);
+        setSaveSuccess(false);
+        setEditMerchant('');
+        setEditAmount('');
+        setEditCategory('');
+        setTransactionType('expense');
+        setCategoryError(false);
+        onSuccess?.();
+        onOpenChange(false);
+    };
+
+    const handleAllocationClose = (open: boolean) => {
+        setShowAllocation(open);
+        if (!open) {
+            cleanupAndClose();
         }
     };
 
@@ -219,228 +236,242 @@ export function AddTransactionSheet({
     };
 
     return (
-        <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent side="bottom" className="h-[85vh] rounded-t-3xl">
-                <SheetHeader className="pb-4">
-                    <SheetTitle>
-                        {mode === 'camera' ? 'Scan Receipt' : 'Add Transaction'}
-                    </SheetTitle>
-                </SheetHeader>
+        <>
+            <Sheet open={open} onOpenChange={onOpenChange}>
+                <SheetContent side="bottom" className="h-[85vh] rounded-t-3xl">
+                    <SheetHeader className="pb-4">
+                        <SheetTitle>
+                            {mode === 'camera' ? 'Scan Receipt' : 'Add Transaction'}
+                        </SheetTitle>
+                    </SheetHeader>
 
-                <div className="flex flex-col gap-4 h-full pb-8">
-                    {/* Camera mode */}
-                    {mode === 'camera' && !parsedResult && (
-                        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-                            {previewImage ? (
-                                <div className="relative rounded-xl overflow-hidden bg-muted max-h-[50vh]">
-                                    <img
-                                        src={previewImage}
-                                        alt="Receipt preview"
-                                        className="w-full h-full object-contain max-h-[50vh]"
-                                    />
+                    <div className="flex flex-col gap-4 h-full pb-8">
+                        {/* Camera mode */}
+                        {mode === 'camera' && !parsedResult && (
+                            <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+                                {previewImage ? (
+                                    <div className="relative rounded-xl overflow-hidden bg-muted max-h-[50vh]">
+                                        <img
+                                            src={previewImage}
+                                            alt="Receipt preview"
+                                            className="w-full h-full object-contain max-h-[50vh]"
+                                        />
+                                        <button
+                                            onClick={() => setPreviewImage(null)}
+                                            className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ) : (
                                     <button
-                                        onClick={() => setPreviewImage(null)}
-                                        className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="flex-1 flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 transition-colors min-h-[200px]"
                                     >
-                                        ×
+                                        <Camera className="w-12 h-12 text-muted-foreground" />
+                                        <span className="text-muted-foreground">Tap to capture receipt</span>
                                     </button>
+                                )}
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={handleFileSelect}
+                                    className="hidden"
+                                />
+                                {previewImage && (
+                                    <Button
+                                        onClick={handleSubmit}
+                                        disabled={isProcessing}
+                                        className="w-full"
+                                    >
+                                        {isProcessing ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Processing...
+                                            </>
+                                        ) : (
+                                            'Analyze Receipt'
+                                        )}
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Text mode */}
+                        {mode === 'text' && !parsedResult && (
+                            <div className="flex-1 flex flex-col gap-4">
+                                <div className="flex-1 flex flex-col gap-2">
+                                    <p className="text-sm text-muted-foreground">
+                                        Describe your transaction naturally, for example:
+                                    </p>
+                                    <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                                        <li>&quot;Dinner at Burger King, €15&quot;</li>
+                                        <li>&quot;Paid €50 for dinner, Juan owes me €25&quot;</li>
+                                        <li>&quot;Received €100 salary&quot;</li>
+                                    </ul>
+                                    <div className="flex-1 relative mt-4">
+                                        <textarea
+                                            value={textInput}
+                                            onChange={(e) => setTextInput(e.target.value)}
+                                            placeholder="Type your transaction..."
+                                            className="w-full h-full min-h-[120px] p-4 rounded-xl bg-muted border-0 resize-none focus:ring-2 focus:ring-primary"
+                                        />
+                                    </div>
                                 </div>
-                            ) : (
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="flex-1 flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 transition-colors min-h-[200px]"
-                                >
-                                    <Camera className="w-12 h-12 text-muted-foreground" />
-                                    <span className="text-muted-foreground">Tap to capture receipt</span>
-                                </button>
-                            )}
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                onChange={handleFileSelect}
-                                className="hidden"
-                            />
-                            {previewImage && (
                                 <Button
                                     onClick={handleSubmit}
-                                    disabled={isProcessing}
+                                    disabled={isProcessing || !textInput.trim()}
                                     className="w-full"
                                 >
                                     {isProcessing ? (
                                         <>
                                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                            Processing...
+                                            Analyzing...
                                         </>
                                     ) : (
-                                        'Analyze Receipt'
+                                        <>
+                                            <Send className="w-4 h-4 mr-2" />
+                                            Process
+                                        </>
                                     )}
                                 </Button>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Text mode */}
-                    {mode === 'text' && !parsedResult && (
-                        <div className="flex-1 flex flex-col gap-4">
-                            <div className="flex-1 flex flex-col gap-2">
-                                <p className="text-sm text-muted-foreground">
-                                    Describe your transaction naturally, for example:
-                                </p>
-                                <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                                    <li>&quot;Dinner at Burger King, €15&quot;</li>
-                                    <li>&quot;Paid €50 for dinner, Juan owes me €25&quot;</li>
-                                    <li>&quot;Received €100 salary&quot;</li>
-                                </ul>
-                                <div className="flex-1 relative mt-4">
-                                    <textarea
-                                        value={textInput}
-                                        onChange={(e) => setTextInput(e.target.value)}
-                                        placeholder="Type your transaction..."
-                                        className="w-full h-full min-h-[120px] p-4 rounded-xl bg-muted border-0 resize-none focus:ring-2 focus:ring-primary"
-                                    />
-                                </div>
                             </div>
-                            <Button
-                                onClick={handleSubmit}
-                                disabled={isProcessing || !textInput.trim()}
-                                className="w-full"
-                            >
-                                {isProcessing ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        Analyzing...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Send className="w-4 h-4 mr-2" />
-                                        Process
-                                    </>
-                                )}
-                            </Button>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Parsed result - EDITABLE */}
-                    {parsedResult && (
-                        <div className="flex-1 flex flex-col gap-4 overflow-auto">
-                            {/* Income/Expense Toggle */}
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => setTransactionType('expense')}
-                                    className={`flex-1 py-3 rounded-xl font-medium transition-all ${transactionType === 'expense'
-                                        ? 'bg-rose-600 text-white'
-                                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                                        }`}
-                                >
-                                    Expense
-                                </button>
-                                <button
-                                    onClick={() => setTransactionType('income')}
-                                    className={`flex-1 py-3 rounded-xl font-medium transition-all ${transactionType === 'income'
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                                        }`}
-                                >
-                                    Income
-                                </button>
-                            </div>
-
-                            {/* Editable Fields */}
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1 block">
-                                        {transactionType === 'income' ? 'From (optional)' : 'Merchant (optional)'}
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editMerchant}
-                                        onChange={(e) => setEditMerchant(e.target.value)}
-                                        placeholder={transactionType === 'income' ? 'e.g., Bizum, Salary' : 'e.g., Burger King'}
-                                        className="w-full p-3 rounded-xl bg-muted border-0 focus:ring-2 focus:ring-primary"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1 block">Amount (€)</label>
-                                    <input
-                                        type="number"
-                                        value={editAmount}
-                                        onChange={(e) => setEditAmount(e.target.value)}
-                                        placeholder="0.00"
-                                        className="w-full p-3 rounded-xl bg-muted border-0 focus:ring-2 focus:ring-primary text-lg font-bold"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="text-sm text-muted-foreground mb-1 block">
-                                        Category <span className="text-rose-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editCategory}
-                                        onChange={(e) => {
-                                            setEditCategory(e.target.value);
-                                            if (e.target.value.trim()) setCategoryError(false);
-                                        }}
-                                        placeholder="e.g., Food, Transport, Income"
-                                        className={`w-full p-3 rounded-xl bg-muted border-2 focus:ring-2 focus:ring-primary ${categoryError ? 'border-rose-500' : 'border-transparent'
+                        {/* Parsed result - EDITABLE */}
+                        {parsedResult && (
+                            <div className="flex-1 flex flex-col gap-4 overflow-auto">
+                                {/* Income/Expense Toggle */}
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setTransactionType('expense')}
+                                        className={`flex-1 py-3 rounded-xl font-medium transition-all ${transactionType === 'expense'
+                                            ? 'bg-rose-600 text-white'
+                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                             }`}
-                                    />
-                                    {categoryError && (
-                                        <p className="text-rose-500 text-sm mt-1">Please select a category</p>
-                                    )}
+                                    >
+                                        Expense
+                                    </button>
+                                    <button
+                                        onClick={() => setTransactionType('income')}
+                                        className={`flex-1 py-3 rounded-xl font-medium transition-all ${transactionType === 'income'
+                                            ? 'bg-emerald-600 text-white'
+                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                            }`}
+                                    >
+                                        Income
+                                    </button>
                                 </div>
-                            </div>
 
-                            {/* Debtor info (if any) */}
-                            {typeof parsedResult.debtorName === 'string' && parsedResult.debtorName && (
-                                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-                                    <div className="flex justify-between text-emerald-500">
-                                        <span>{parsedResult.debtorName} owes you</span>
-                                        <span className="font-bold">{formatCurrency(parsedResult.debtShare as number)}</span>
+                                {/* Editable Fields */}
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-sm text-muted-foreground mb-1 block">
+                                            {transactionType === 'income' ? 'From (optional)' : 'Merchant (optional)'}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editMerchant}
+                                            onChange={(e) => setEditMerchant(e.target.value)}
+                                            placeholder={transactionType === 'income' ? 'e.g., Bizum, Salary' : 'e.g., Burger King'}
+                                            className="w-full p-3 rounded-xl bg-muted border-0 focus:ring-2 focus:ring-primary"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm text-muted-foreground mb-1 block">Amount (€)</label>
+                                        <input
+                                            type="number"
+                                            value={editAmount}
+                                            onChange={(e) => setEditAmount(e.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full p-3 rounded-xl bg-muted border-0 focus:ring-2 focus:ring-primary text-lg font-bold"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-sm text-muted-foreground mb-1 block">
+                                            Category <span className="text-rose-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editCategory}
+                                            onChange={(e) => {
+                                                setEditCategory(e.target.value);
+                                                if (e.target.value.trim()) setCategoryError(false);
+                                            }}
+                                            placeholder="e.g., Food, Transport, Income"
+                                            className={`w-full p-3 rounded-xl bg-muted border-2 focus:ring-2 focus:ring-primary ${categoryError ? 'border-rose-500' : 'border-transparent'
+                                                }`}
+                                        />
+                                        {categoryError && (
+                                            <p className="text-rose-500 text-sm mt-1">Please select a category</p>
+                                        )}
                                     </div>
                                 </div>
-                            )}
 
-                            {/* Action Buttons */}
-                            <div className="flex gap-2 mt-auto">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => {
-                                        setParsedResult(null);
-                                        setEditMerchant('');
-                                        setEditAmount('');
-                                        setEditCategory('');
-                                        setCategoryError(false);
-                                    }}
-                                    className="flex-1"
-                                    disabled={isSaving}
-                                >
-                                    Start Over
-                                </Button>
-                                <Button
-                                    onClick={handleConfirm}
-                                    className={`flex-1 ${transactionType === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
-                                    disabled={isSaving || saveSuccess}
-                                >
-                                    {saveSuccess ? (
-                                        <>
-                                            <Check className="w-4 h-4 mr-2" />
-                                            Saved!
-                                        </>
-                                    ) : isSaving ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        'Confirm'
-                                    )}
-                                </Button>
+                                {/* Debtor info (if any) */}
+                                {typeof parsedResult.debtorName === 'string' && parsedResult.debtorName && (
+                                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                                        <div className="flex justify-between text-emerald-500">
+                                            <span>{parsedResult.debtorName} owes you</span>
+                                            <span className="font-bold">{formatCurrency(parsedResult.debtShare as number)}</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Action Buttons */}
+                                <div className="flex gap-2 mt-auto">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            setParsedResult(null);
+                                            setEditMerchant('');
+                                            setEditAmount('');
+                                            setEditCategory('');
+                                            setCategoryError(false);
+                                        }}
+                                        className="flex-1"
+                                        disabled={isSaving}
+                                    >
+                                        Start Over
+                                    </Button>
+                                    <Button
+                                        onClick={handleConfirm}
+                                        className={`flex-1 ${transactionType === 'income' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                                        disabled={isSaving || saveSuccess}
+                                    >
+                                        {saveSuccess ? (
+                                            <>
+                                                <Check className="w-4 h-4 mr-2" />
+                                                Saved!
+                                            </>
+                                        ) : isSaving ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            'Confirm'
+                                        )}
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-            </SheetContent>
-        </Sheet>
+                        )}
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            {/* Allocation Sheet - must be outside parent Sheet */}
+            {user && allocationData && (
+                <AllocationSuggestSheet
+                    open={showAllocation}
+                    onOpenChange={handleAllocationClose}
+                    userId={user.uid}
+                    incomeAmount={allocationData.amount}
+                    sourceAccountId={allocationData.sourceId}
+                    onComplete={() => { /* Handled by onOpenChange(false) which calls cleanupAndClose */ }}
+                />
+            )}
+        </>
     );
 }
