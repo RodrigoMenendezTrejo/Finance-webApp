@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/firebase/auth-context';
 import { getAccounts, getTotalByType, deleteAccount } from '@/lib/firebase/accounts-service';
 import { getTransactions, getTotalSpending } from '@/lib/firebase/transactions-service';
 import { getRecurringTransactions, getMonthlyRecurringTotal, processDueRecurring } from '@/lib/firebase/recurring-service';
+import { saveNetWorthSnapshot, getNetWorthHistory, aggregateByWeek, aggregateByMonth } from '@/lib/firebase/networth-service';
 import { Account } from '@/types/firestore';
 
 // Generate avatar colors based on name
@@ -51,6 +52,11 @@ export default function DashboardPage() {
         income: { total: 0, count: 0 },
         bills: { total: 0, count: 0 },
     });
+
+    // Net worth history data for charts
+    const [netWorthData1M, setNetWorthData1M] = useState<{ label: string; assets: number; liabilities: number; netWorth: number }[]>([]);
+    const [netWorthData6M, setNetWorthData6M] = useState<{ label: string; assets: number; liabilities: number; netWorth: number }[]>([]);
+    const [netWorthData1Y, setNetWorthData1Y] = useState<{ label: string; assets: number; liabilities: number; netWorth: number }[]>([]);
 
     const [isAddingTransaction, setIsAddingTransaction] = useState(false);
     const [addMode, setAddMode] = useState<'camera' | 'text'>('text');
@@ -164,6 +170,63 @@ export default function DashboardPage() {
                 bills: { total: billTotal, count: activeBills.length },
             });
 
+            // Save today's net worth snapshot
+            await saveNetWorthSnapshot(user.uid, {
+                assets,
+                liabilities,
+                receivables,
+            });
+
+            // Fetch historical net worth data
+            const [history1M, history6M, history1Y] = await Promise.all([
+                getNetWorthHistory(user.uid, 30),   // Last 30 days
+                getNetWorthHistory(user.uid, 180),  // Last 6 months
+                getNetWorthHistory(user.uid, 365),  // Last 12 months
+            ]);
+
+            // Aggregate data for different time ranges
+            const data1M = aggregateByWeek(history1M);
+            const data6M = aggregateByMonth(history6M);
+            const data1Y = aggregateByMonth(history1Y);
+
+            // If no history exists yet, create a single point with current values
+            const currentPoint = {
+                label: 'Now',
+                assets,
+                liabilities,
+                netWorth: assets + receivables - liabilities,
+            };
+
+            // Create starting point (0 values) for showing growth line
+            // Empty label so chart doesn't show "Start" - just shows the line
+            const startPoint = {
+                label: '',
+                assets: 0,
+                liabilities: 0,
+                netWorth: 0,
+            };
+
+            // Get current month name for labeling
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const currentMonth = monthNames[new Date().getMonth()];
+            const currentWeek = `Week ${Math.ceil(new Date().getDate() / 7)}`;
+
+            // Helper function to ensure at least 2 points for a visible line
+            const ensureLine = (data: typeof data1M, currentLabel: string) => {
+                if (data.length === 0) {
+                    // No data: show line from 0 to current
+                    return [startPoint, { ...currentPoint, label: currentLabel }];
+                } else if (data.length === 1) {
+                    // Only 1 point: add starting 0 point for context
+                    return [startPoint, data[0]];
+                }
+                return data;
+            };
+
+            setNetWorthData1M(ensureLine(data1M, currentWeek));
+            setNetWorthData6M(ensureLine(data6M, currentMonth));
+            setNetWorthData1Y(ensureLine(data1Y, currentMonth));
+
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         } finally {
@@ -197,45 +260,6 @@ export default function DashboardPage() {
             amount: a.balance,
             avatarColor: getAvatarColor(a.name),
         }));
-
-    // Generate net worth history data for different time ranges
-    // 1 Month (4 weeks) - shows weekly data
-    const netWorthData1M = [
-        { label: 'Week 1', assets: netWorth * 0.94, liabilities: totalLiabilities, netWorth: netWorth * 0.93 },
-        { label: 'Week 2', assets: netWorth * 0.96, liabilities: totalLiabilities, netWorth: netWorth * 0.95 },
-        { label: 'Week 3', assets: netWorth * 0.98, liabilities: totalLiabilities, netWorth: netWorth * 0.97 },
-        { label: 'Week 4', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
-    ];
-
-    // 6 Months - shows monthly data
-    const netWorthData6M = [
-        { label: 'Jul', assets: netWorth * 0.7, liabilities: totalLiabilities, netWorth: netWorth * 0.65 },
-        { label: 'Aug', assets: netWorth * 0.75, liabilities: totalLiabilities, netWorth: netWorth * 0.7 },
-        { label: 'Sep', assets: netWorth * 0.8, liabilities: totalLiabilities, netWorth: netWorth * 0.78 },
-        { label: 'Oct', assets: netWorth * 0.85, liabilities: totalLiabilities, netWorth: netWorth * 0.83 },
-        { label: 'Nov', assets: netWorth * 0.95, liabilities: totalLiabilities, netWorth: netWorth * 0.92 },
-        { label: 'Dec', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
-    ];
-
-    // 1 Year (12 months) - shows monthly data
-    const netWorthData1Y = [
-        { label: 'Jan', assets: netWorth * 0.5, liabilities: totalLiabilities * 1.2, netWorth: netWorth * 0.4 },
-        { label: 'Feb', assets: netWorth * 0.52, liabilities: totalLiabilities * 1.15, netWorth: netWorth * 0.45 },
-        { label: 'Mar', assets: netWorth * 0.55, liabilities: totalLiabilities * 1.1, netWorth: netWorth * 0.5 },
-        { label: 'Apr', assets: netWorth * 0.58, liabilities: totalLiabilities * 1.05, netWorth: netWorth * 0.55 },
-        { label: 'May', assets: netWorth * 0.62, liabilities: totalLiabilities, netWorth: netWorth * 0.58 },
-        { label: 'Jun', assets: netWorth * 0.65, liabilities: totalLiabilities, netWorth: netWorth * 0.62 },
-        { label: 'Jul', assets: netWorth * 0.7, liabilities: totalLiabilities, netWorth: netWorth * 0.65 },
-        { label: 'Aug', assets: netWorth * 0.75, liabilities: totalLiabilities, netWorth: netWorth * 0.7 },
-        { label: 'Sep', assets: netWorth * 0.8, liabilities: totalLiabilities, netWorth: netWorth * 0.78 },
-        { label: 'Oct', assets: netWorth * 0.85, liabilities: totalLiabilities, netWorth: netWorth * 0.83 },
-        { label: 'Nov', assets: netWorth * 0.95, liabilities: totalLiabilities, netWorth: netWorth * 0.92 },
-        { label: 'Dec', assets: totalAssets, liabilities: totalLiabilities, netWorth: netWorth },
-    ];
-
-    const percentChange = netWorthData6M.length >= 2
-        ? ((netWorthData6M[5].netWorth - netWorthData6M[4].netWorth) / (netWorthData6M[4].netWorth || 1)) * 100
-        : 0;
 
     // Show loading while fetching
     if (loading) {
@@ -289,7 +313,6 @@ export default function DashboardPage() {
                     data6M={netWorthData6M}
                     data1Y={netWorthData1Y}
                     currentNetWorth={netWorth}
-                    percentChange={percentChange}
                     hideAmounts={hideAmounts}
                 />
 

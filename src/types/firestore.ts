@@ -80,3 +80,15 @@ export interface ParsedReceipt {
     category: string;
     confidence: number;
 }
+
+// Net Worth History Snapshot
+// Stored daily to track net worth over time
+export interface NetWorthSnapshot {
+    id: string;              // Document ID = "YYYY-MM-DD"
+    date: string;            // "YYYY-MM-DD" format for easy querying
+    assets: number;
+    liabilities: number;
+    receivables: number;
+    netWorth: number;        // assets + receivables - liabilities
+    createdAt: Timestamp;
+}

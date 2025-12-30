@@ -27,7 +27,6 @@ interface NetWorthChartProps {
     data6M: NetWorthDataPoint[];
     data1Y: NetWorthDataPoint[];
     currentNetWorth: number;
-    percentChange: number;
     hideAmounts?: boolean;
 }
 
@@ -42,11 +41,9 @@ export function NetWorthChart({
     data6M,
     data1Y,
     currentNetWorth,
-    percentChange,
     hideAmounts = false,
 }: NetWorthChartProps) {
     const [timeRange, setTimeRange] = useState<TimeRange>('6M');
-    const isPositive = percentChange >= 0;
 
     // Get data based on selected time range
     const data = useMemo(() => {
@@ -57,6 +54,32 @@ export function NetWorthChart({
             default: return data6M;
         }
     }, [timeRange, data1M, data6M, data1Y]);
+
+    // Calculate percent change based on selected view
+    // 1M: needs 2+ weeks, 6M/1Y: needs 2+ months
+    const percentChange = useMemo((): number | null => {
+        const viewData = data;
+
+        // Minimum data points needed:
+        // - For 1M (weekly): 2 weeks
+        // - For 6M/1Y (monthly): 2 months
+        const minPoints = 2;
+
+        if (viewData.length < minPoints) return null;
+
+        const firstValue = viewData[0].netWorth;
+        const lastValue = viewData[viewData.length - 1].netWorth;
+
+        // If first value is 0 or near-zero, percentage is meaningless
+        // This handles new users who just started tracking
+        if (firstValue <= 0 || Math.abs(firstValue) < 1) {
+            return null;
+        }
+
+        return ((lastValue - firstValue) / firstValue) * 100;
+    }, [data]);
+
+    const isPositive = percentChange === null || percentChange >= 0;
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('es-ES', {
@@ -126,10 +149,12 @@ export function NetWorthChart({
                             {formatCurrency(currentNetWorth)}
                         </span>
                         <span
-                            className={`text-sm font-medium ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}
+                            className={`text-sm font-medium ${percentChange === null ? 'text-blue-400' : isPositive ? 'text-emerald-500' : 'text-rose-500'}`}
                         >
-                            {isPositive ? '+' : ''}
-                            {percentChange.toFixed(1)}%
+                            {percentChange === null
+                                ? 'New'
+                                : `${isPositive ? '+' : ''}${percentChange.toFixed(1)}%`
+                            }
                         </span>
                     </div>
 
