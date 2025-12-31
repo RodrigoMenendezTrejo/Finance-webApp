@@ -102,6 +102,18 @@ function AccountsContent() {
         fetchAccounts();
     }, [user]);
 
+    // When transferFromId changes, ensure transferToId is valid
+    useEffect(() => {
+        if (!transferFromId) return;
+        const assetAccounts = accounts.filter(a => a.type === 'asset');
+        const availableTargets = assetAccounts.filter(a => a.id !== transferFromId);
+
+        // If current transferToId is invalid (same as from or not in list), pick first available
+        if (transferToId === transferFromId || !availableTargets.find(a => a.id === transferToId)) {
+            setTransferToId(availableTargets[0]?.id || '');
+        }
+    }, [transferFromId, accounts, transferToId]);
+
     const refreshAccounts = async () => {
         if (!user) return;
         const data = await getAccounts(user.uid);
