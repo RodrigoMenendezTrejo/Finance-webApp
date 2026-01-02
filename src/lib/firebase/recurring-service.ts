@@ -208,6 +208,7 @@ export interface ProcessedRecurringItem {
     name: string;
     amount: number;
     type: RecurringType;
+    accountId: string; // Account where the transaction was deposited
 }
 
 // Process due recurring transactions
@@ -259,6 +260,7 @@ export async function processDueRecurring(userId: string): Promise<ProcessedRecu
                     name: recurring.name,
                     amount: recurring.amount,
                     type: recurring.type,
+                    accountId: recurring.accountId,
                 });
             } catch (error) {
                 console.error(`Error processing recurring ${recurring.id}:`, error);

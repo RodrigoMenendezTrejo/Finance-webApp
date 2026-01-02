@@ -129,10 +129,36 @@ export default function DashboardPage() {
                     // Trigger allocation suggestion for income items if user has autoSuggestGoals enabled
                     const incomeItems = processedItems.filter(item => item.type === 'income');
                     if (incomeItems.length > 0 && userProfile?.autoSuggestGoals !== false) {
-                        const totalIncome = incomeItems.reduce((sum, item) => sum + item.amount, 0);
-                        // Get the first asset account as source
+                        // Get accounts to check for goal accounts
                         const assetAccounts = await getAccounts(user.uid);
-                        const sourceAccount = assetAccounts.find(a => a.type === 'asset');
+
+                        // Check if there are any goal accounts (savings accounts marked for goals)
+                        const hasGoalAccounts = assetAccounts.some(a => a.isGoalAccount === true);
+
+                        // Only show allocation popup if goal accounts exist
+                        if (!hasGoalAccounts) {
+                            // No goal accounts, skip showing the popup
+                            return;
+                        }
+
+                        // Filter out income that already went to a goal account (no need to suggest allocation)
+                        const incomeNotInGoalAccounts = incomeItems.filter(item => {
+                            const account = assetAccounts.find(a => a.id === item.accountId);
+                            return !account?.isGoalAccount;
+                        });
+
+                        // If all income already went to goal accounts, skip the popup
+                        if (incomeNotInGoalAccounts.length === 0) {
+                            return;
+                        }
+
+                        const totalIncome = incomeNotInGoalAccounts.reduce((sum, item) => sum + item.amount, 0);
+                        // Get the first non-goal asset account as source (the one that received non-goal income)
+                        const sourceAccount = assetAccounts.find(a =>
+                            a.type === 'asset' &&
+                            incomeNotInGoalAccounts.some(item => item.accountId === a.id)
+                        ) || assetAccounts.find(a => a.type === 'asset' && !a.isGoalAccount);
+
                         if (sourceAccount) {
                             setAllocationData({ amount: totalIncome, sourceId: sourceAccount.id });
                             // Delay to show toasts first

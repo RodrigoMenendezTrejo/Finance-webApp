@@ -2,15 +2,22 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Search, Filter, ArrowUpRight, ArrowDownLeft, Loader2, Trash2, Pencil } from 'lucide-react';
+import { ArrowLeft, Search, Filter, Loader2, Trash2, X, Check, List, BarChart3 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { getCategoryById, DEFAULT_CATEGORIES } from '@/lib/categories';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { MerchantLogo } from '@/components/ui/merchant-logo';
+import { SwipeableRow } from '@/components/ui/swipeable-row';
+import { TransactionEvolutionChart } from '@/components/charts/transaction-evolution-chart';
+import { getCategoryById } from '@/lib/categories';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTransactions, deleteTransaction } from '@/lib/firebase/transactions-service';
 import { Transaction } from '@/types/firestore';
+
+type FilterType = 'all' | 'income' | 'expense' | 'transfer';
+type ViewMode = 'list' | 'chart';
 
 export default function TransactionsPage() {
     const router = useRouter();
@@ -19,6 +26,9 @@ export default function TransactionsPage() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
+    const [filterType, setFilterType] = useState<FilterType>('all');
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
 
     // Edit/Delete state
     const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -26,17 +36,12 @@ export default function TransactionsPage() {
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Edit form state
-    const [editPayee, setEditPayee] = useState('');
-    const [editAmount, setEditAmount] = useState('');
-    const [editCategory, setEditCategory] = useState('');
-
     // Fetch transactions
     useEffect(() => {
         async function fetchTransactions() {
             if (!user) return;
             try {
-                const { transactions: data } = await getTransactions(user.uid, { limit: 50 });
+                const { transactions: data } = await getTransactions(user.uid, { limit: 100 });
                 setTransactions(data);
             } catch (error) {
                 console.error('Error fetching transactions:', error);
@@ -49,7 +54,7 @@ export default function TransactionsPage() {
 
     const refreshTransactions = async () => {
         if (!user) return;
-        const { transactions: data } = await getTransactions(user.uid, { limit: 50 });
+        const { transactions: data } = await getTransactions(user.uid, { limit: 100 });
         setTransactions(data);
     };
 
@@ -80,10 +85,12 @@ export default function TransactionsPage() {
 
     const openEditDialog = (tx: Transaction) => {
         setSelectedTransaction(tx);
-        setEditPayee(tx.payee);
-        setEditAmount(tx.amount.toString());
-        setEditCategory(tx.category);
         setIsEditOpen(true);
+    };
+
+    const openDeleteConfirm = (tx: Transaction) => {
+        setSelectedTransaction(tx);
+        setIsDeleteOpen(true);
     };
 
     const handleDeleteTransaction = async () => {
@@ -104,10 +111,22 @@ export default function TransactionsPage() {
     };
 
     // Convert Firestore timestamps to dates and group
-    const processedTransactions = transactions.map(tx => ({
-        ...tx,
-        dateObj: tx.date.toDate(),
-    }));
+    const processedTransactions = transactions
+        .map(tx => ({
+            ...tx,
+            dateObj: tx.date.toDate(),
+        }))
+        .filter(tx => {
+            // Apply type filter
+            if (filterType !== 'all' && tx.type !== filterType) return false;
+            // Apply search filter
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase();
+                return tx.payee.toLowerCase().includes(query) ||
+                    tx.category.toLowerCase().includes(query);
+            }
+            return true;
+        });
 
     // Group transactions by date
     const groupedTransactions = processedTransactions.reduce((groups, tx) => {
@@ -119,14 +138,12 @@ export default function TransactionsPage() {
         return groups;
     }, {} as Record<string, typeof processedTransactions>);
 
-    // Filter by search
-    const filteredGroups = Object.entries(groupedTransactions).filter(([, txs]) =>
-        txs.some(
-            (tx) =>
-                tx.payee.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                tx.category.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-    );
+    // Calculate daily totals
+    const getDailyStats = (txs: typeof processedTransactions) => {
+        const income = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+        return { income, expense };
+    };
 
     if (loading) {
         return (
@@ -148,9 +165,38 @@ export default function TransactionsPage() {
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                     <h1 className="text-xl font-bold">Transactions</h1>
-                    <button className="ml-auto p-2 rounded-full hover:bg-muted transition-colors">
-                        <Filter className="w-5 h-5" />
-                    </button>
+
+                    {/* Segmented control group */}
+                    <div className="ml-auto flex gap-1 bg-muted/50 p-1 rounded-lg">
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={`p-2 rounded-md transition-all ${viewMode === 'list'
+                                ? 'bg-card text-foreground shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                        >
+                            <List className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('chart')}
+                            className={`p-2 rounded-md transition-all ${viewMode === 'chart'
+                                ? 'bg-card text-emerald-500 shadow-sm'
+                                : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                        >
+                            <BarChart3 className="w-4 h-4" />
+                        </button>
+                        <div className="w-px bg-border/50 mx-1" />
+                        <button
+                            onClick={() => setIsFilterOpen(true)}
+                            className={`p-2 rounded-md transition-all ${filterType !== 'all'
+                                ? 'bg-primary/20 text-primary'
+                                : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                        >
+                            <Filter className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Search */}
@@ -167,68 +213,104 @@ export default function TransactionsPage() {
                 </div>
             </header>
 
+            {/* Chart drawer - slides down when active */}
+            <div
+                className={`overflow-hidden transition-all duration-300 ease-out ${viewMode === 'chart' ? 'max-h-[320px] opacity-100' : 'max-h-0 opacity-0'
+                    }`}
+            >
+                <div className="p-4 pb-2">
+                    <TransactionEvolutionChart transactions={transactions} />
+                </div>
+            </div>
+
             {/* Transactions list */}
             <ScrollArea className="flex-1">
-                <div className="p-4 space-y-6">
-                    {filteredGroups.map(([dateKey, txs]) => (
-                        <div key={dateKey}>
-                            <h2 className="text-sm font-medium text-muted-foreground mb-2">
-                                {formatDate(new Date(dateKey))}
-                            </h2>
-                            <div className="space-y-2">
-                                {txs.map((tx) => {
-                                    const category = getCategoryById(tx.category);
-                                    const isIncome = tx.type === 'income';
+                <div className={`p-4 space-y-6 transition-opacity duration-200 ${viewMode === 'chart' ? 'opacity-60' : 'opacity-100'
+                    }`}>
+                    {Object.entries(groupedTransactions)
+                        .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+                        .map(([dateKey, txs]) => {
+                            const stats = getDailyStats(txs);
+                            const hasIncome = stats.income > 0;
+                            const hasExpense = stats.expense > 0;
 
-                                    return (
-                                        <div
-                                            key={tx.id}
-                                            onClick={() => openEditDialog(tx)}
-                                            className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50 hover:bg-muted/50 transition-colors cursor-pointer"
-                                        >
-                                            {/* Category icon */}
-                                            <div
-                                                className="w-10 h-10 rounded-full flex items-center justify-center text-lg"
-                                                style={{ backgroundColor: (category?.color || '#95A5A6') + '20' }}
-                                            >
-                                                {category?.icon || '📦'}
-                                            </div>
-
-                                            {/* Details */}
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-medium truncate">{tx.payee}</p>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {category?.name || tx.category || 'Other'}
+                            return (
+                                <div key={dateKey}>
+                                    {/* Date header with daily summary */}
+                                    <div className="py-2 mb-3">
+                                        <div className="flex items-center justify-between">
+                                            <h2 className="text-sm font-bold text-foreground">
+                                                {formatDate(new Date(dateKey))}
+                                            </h2>
+                                            <div className="flex items-center gap-3 text-sm">
+                                                {hasIncome && (
+                                                    <span className="text-emerald-500 font-semibold">
+                                                        +{formatCurrency(stats.income)}
                                                     </span>
-                                                </div>
-                                            </div>
-
-                                            {/* Amount */}
-                                            <div className="flex items-center gap-2">
-                                                <div className="text-right">
-                                                    <div className="flex items-center gap-1">
-                                                        {isIncome ? (
-                                                            <ArrowDownLeft className="w-3 h-3 text-emerald-500" />
-                                                        ) : (
-                                                            <ArrowUpRight className="w-3 h-3 text-rose-500" />
-                                                        )}
-                                                        <span
-                                                            className={`font-bold ${isIncome ? 'text-emerald-500' : 'text-foreground'
-                                                                }`}
-                                                        >
-                                                            {isIncome ? '+' : '-'}{formatCurrency(tx.amount)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <Pencil className="w-4 h-4 text-muted-foreground" />
+                                                )}
+                                                {hasExpense && (
+                                                    <span className="text-rose-400 font-semibold">
+                                                        -{formatCurrency(stats.expense)}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    ))}
+                                    </div>
+
+                                    {/* Transaction rows */}
+                                    <div className="space-y-2">
+                                        {txs.map((tx) => {
+                                            const category = getCategoryById(tx.category);
+                                            const isIncome = tx.type === 'income';
+
+                                            return (
+                                                <SwipeableRow
+                                                    key={tx.id}
+                                                    onEdit={() => openEditDialog(tx)}
+                                                    onDelete={() => openDeleteConfirm(tx)}
+                                                >
+                                                    <div
+                                                        onClick={() => openEditDialog(tx)}
+                                                        className="flex items-center gap-3 p-3 rounded-xl bg-card hover:bg-muted/50 transition-all duration-200 cursor-pointer"
+                                                    >
+                                                        {/* Merchant logo - fixed size container */}
+                                                        <div className="shrink-0">
+                                                            <MerchantLogo
+                                                                name={tx.payee}
+                                                                category={tx.category}
+                                                                isIncome={isIncome}
+                                                            />
+                                                        </div>
+
+                                                        {/* Details */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-semibold text-foreground truncate">
+                                                                {tx.payee}
+                                                            </p>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {category?.name || tx.category || 'Other'}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Amount */}
+                                                        <div className="text-right pr-8 md:pr-0">
+                                                            <span
+                                                                className={`text-lg font-bold ${isIncome
+                                                                    ? 'text-emerald-500'
+                                                                    : 'text-foreground'
+                                                                    }`}
+                                                            >
+                                                                {isIncome ? '+' : '-'}{formatCurrency(tx.amount)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </SwipeableRow>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
 
                     {transactions.length === 0 && (
                         <div className="text-center py-12 text-muted-foreground">
@@ -237,13 +319,40 @@ export default function TransactionsPage() {
                         </div>
                     )}
 
-                    {transactions.length > 0 && filteredGroups.length === 0 && (
+                    {transactions.length > 0 && Object.keys(groupedTransactions).length === 0 && (
                         <div className="text-center py-12 text-muted-foreground">
                             No transactions match your search
                         </div>
                     )}
                 </div>
             </ScrollArea>
+
+            {/* Filter Sheet */}
+            <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+                <SheetContent side="bottom" className="h-auto rounded-t-2xl">
+                    <SheetHeader>
+                        <SheetTitle>Filter Transactions</SheetTitle>
+                    </SheetHeader>
+                    <div className="py-4 space-y-3">
+                        {(['all', 'income', 'expense', 'transfer'] as FilterType[]).map((type) => (
+                            <button
+                                key={type}
+                                onClick={() => {
+                                    setFilterType(type);
+                                    setIsFilterOpen(false);
+                                }}
+                                className={`w-full p-3 rounded-xl text-left font-medium transition-colors flex items-center justify-between ${filterType === type
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-muted hover:bg-muted/80'
+                                    }`}
+                            >
+                                <span className="capitalize">{type === 'all' ? 'All Transactions' : type}</span>
+                                {filterType === type && <Check className="w-5 h-5" />}
+                            </button>
+                        ))}
+                    </div>
+                </SheetContent>
+            </Sheet>
 
             {/* Edit Transaction Dialog */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
@@ -252,32 +361,50 @@ export default function TransactionsPage() {
                         <DialogTitle>Transaction Details</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 pt-4">
-                        <div className="p-4 rounded-xl bg-muted space-y-3">
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Payee</span>
-                                <span className="font-medium">{selectedTransaction?.payee}</span>
+                        {/* Transaction preview */}
+                        <div className="flex items-center gap-3 p-4 rounded-xl bg-muted">
+                            <MerchantLogo
+                                name={selectedTransaction?.payee || ''}
+                                category={selectedTransaction?.category}
+                                isIncome={selectedTransaction?.type === 'income'}
+                                size="lg"
+                            />
+                            <div className="flex-1">
+                                <p className="font-semibold">{selectedTransaction?.payee}</p>
+                                <p className="text-sm text-muted-foreground">{selectedTransaction?.category}</p>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Amount</span>
-                                <span className={`font-bold ${selectedTransaction?.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                    {selectedTransaction?.type === 'income' ? '+' : '-'}
-                                    {formatCurrency(selectedTransaction?.amount || 0)}
-                                </span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Category</span>
-                                <span className="font-medium">{selectedTransaction?.category}</span>
-                            </div>
-                            <div className="flex justify-between">
+                            <span className={`text-lg font-bold ${selectedTransaction?.type === 'income' ? 'text-emerald-500' : 'text-foreground'
+                                }`}>
+                                {selectedTransaction?.type === 'income' ? '+' : '-'}
+                                {formatCurrency(selectedTransaction?.amount || 0)}
+                            </span>
+                        </div>
+
+                        {/* Details */}
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between py-2 border-b border-border/50">
                                 <span className="text-muted-foreground">Date</span>
                                 <span className="font-medium">
-                                    {selectedTransaction?.date.toDate().toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric', year: 'numeric' })}
+                                    {selectedTransaction?.date.toDate().toLocaleDateString('es-ES', {
+                                        day: 'numeric',
+                                        month: 'long',
+                                        year: 'numeric'
+                                    })}
+                                </span>
+                            </div>
+                            <div className="flex justify-between py-2 border-b border-border/50">
+                                <span className="text-muted-foreground">Type</span>
+                                <span className={`font-medium capitalize ${selectedTransaction?.type === 'income' ? 'text-emerald-500' : ''
+                                    }`}>
+                                    {selectedTransaction?.type}
                                 </span>
                             </div>
                             {selectedTransaction?.notes && (
-                                <div className="flex justify-between">
+                                <div className="flex justify-between py-2 border-b border-border/50">
                                     <span className="text-muted-foreground">Notes</span>
-                                    <span className="font-medium">{selectedTransaction.notes}</span>
+                                    <span className="font-medium text-right max-w-[200px] truncate">
+                                        {selectedTransaction.notes}
+                                    </span>
                                 </div>
                             )}
                         </div>

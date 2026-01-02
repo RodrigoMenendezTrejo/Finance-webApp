@@ -11,7 +11,7 @@ import {
     signOut as firebaseSignOut,
     updateProfile,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from './config';
 import { UserProfile } from '@/types/firestore';
 import { createDefaultAccounts } from './accounts-service';
@@ -78,12 +78,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
         }
 
+        let unsubscribeProfile: (() => void) | null = null;
+
         try {
-            const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
                 setUser(user);
+
+                // Unsubscribe from previous profile listener if any
+                if (unsubscribeProfile) {
+                    unsubscribeProfile();
+                    unsubscribeProfile = null;
+                }
+
                 if (user) {
-                    const profile = await ensureUserProfile(user);
-                    setUserProfile(profile);
+                    // Ensure profile exists first
+                    await ensureUserProfile(user);
+
+                    // Set up real-time listener for user profile
+                    const userRef = doc(db, 'users', user.uid);
+                    unsubscribeProfile = onSnapshot(userRef, (snapshot) => {
+                        if (snapshot.exists()) {
+                            setUserProfile(snapshot.data() as UserProfile);
+                        }
+                    }, (error) => {
+                        console.error('Profile listener error:', error);
+                    });
                 } else {
                     setUserProfile(null);
                 }
@@ -93,7 +112,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setLoading(false);
             });
 
-            return () => unsubscribe();
+            return () => {
+                unsubscribeAuth();
+                if (unsubscribeProfile) {
+                    unsubscribeProfile();
+                }
+            };
         } catch (error) {
             console.error('Error setting up auth listener:', error);
             setLoading(false);
