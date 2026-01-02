@@ -48,7 +48,7 @@ export default function DashboardPage() {
     const [totalLiabilities, setTotalLiabilities] = useState(0);
     const [totalReceivables, setTotalReceivables] = useState(0);
     const [monthlySpending, setMonthlySpending] = useState(0);
-    const [recentCount, setRecentCount] = useState(0);
+    const [recentTransactions, setRecentTransactions] = useState<{ id: string; payee: string; amount: number; type: 'expense' | 'income' | 'transfer'; category: string }[]>([]);
     const [recurringData, setRecurringData] = useState({
         subscriptions: { total: 0, count: 0 },
         income: { total: 0, count: 0 },
@@ -202,12 +202,18 @@ export default function DashboardPage() {
             const spending = await getTotalSpending(user.uid, startOfMonth, now);
             setMonthlySpending(spending);
 
-            // Get recent transactions count
+            // Get recent transactions
             const { transactions } = await getTransactions(user.uid, { limit: 50 });
             const weekAgo = new Date();
             weekAgo.setDate(weekAgo.getDate() - 7);
             const recentTxns = transactions.filter(t => t.date.toDate() >= weekAgo);
-            setRecentCount(recentTxns.length);
+            setRecentTransactions(recentTxns.map(t => ({
+                id: t.id,
+                payee: t.payee,
+                amount: t.amount,
+                type: t.type,
+                category: t.category,
+            })));
 
             // Get recurring data for all types
             const recurringItems = await getRecurringTransactions(user.uid);
@@ -404,7 +410,7 @@ export default function DashboardPage() {
 
                 {/* Recent Activity */}
                 <RecentActivityCard
-                    count={recentCount}
+                    transactions={recentTransactions}
                     onClick={() => router.push('/transactions')}
                 />
 

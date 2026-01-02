@@ -148,7 +148,7 @@ interface MerchantLogoProps {
     name: string;
     category?: string;
     isIncome?: boolean;
-    size?: 'sm' | 'md' | 'lg';
+    size?: 'xs' | 'sm' | 'md' | 'lg';
     className?: string;
 }
 
@@ -175,6 +175,7 @@ export function MerchantLogo({
 
     // Size classes
     const sizeClasses = {
+        xs: 'w-7 h-7 text-xs',
         sm: 'w-9 h-9 text-sm',
         md: 'w-11 h-11 text-base',
         lg: 'w-14 h-14 text-lg',
@@ -211,13 +212,15 @@ export function MerchantLogo({
     }
 
     // Try brand logo, fallback to initials
+    const showBackground = logoError || !logoLoaded;
+
     return (
         <div
             className={cn(
                 'rounded-xl flex items-center justify-center overflow-hidden',
                 sizeClasses[size],
-                bgColor,
-                isIncome && 'ring-1 ring-emerald-500/30',
+                showBackground && bgColor,
+                isIncome && showBackground && 'ring-1 ring-emerald-500/30',
                 className
             )}
             style={logoError ? { backgroundColor: avatarColor + '30' } : undefined}
@@ -236,7 +239,7 @@ export function MerchantLogo({
                         src={logoUrl}
                         alt={name}
                         className={cn(
-                            'w-full h-full object-contain p-1',
+                            'w-full h-full object-contain',
                             !logoLoaded && 'hidden'
                         )}
                         onLoad={() => setLogoLoaded(true)}

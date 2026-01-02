@@ -85,6 +85,19 @@ export async function getTransaction(
     } as Transaction;
 }
 
+// Update transaction (only payee name, does not affect balances)
+export async function updateTransaction(
+    userId: string,
+    transactionId: string,
+    data: { payee: string }
+): Promise<void> {
+    const transactionRef = doc(db, 'users', userId, 'transactions', transactionId);
+    await updateDoc(transactionRef, {
+        payee: data.payee,
+        updatedAt: serverTimestamp(),
+    });
+}
+
 // Create transaction with atomic balance updates
 export async function createTransaction(
     userId: string,

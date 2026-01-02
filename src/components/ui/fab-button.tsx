@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Camera, Keyboard, X } from 'lucide-react';
+import { Camera, Keyboard, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface FABButtonProps {
@@ -95,7 +95,7 @@ export function FABButton({ onCameraClick, onTextClick }: FABButtonProps) {
                     {isOpen ? (
                         <X className="w-6 h-6 text-primary-foreground" />
                     ) : (
-                        <Plus className="w-6 h-6 text-primary-foreground" />
+                        <Camera className="w-6 h-6 text-primary-foreground" />
                     )}
                 </div>
             </button>

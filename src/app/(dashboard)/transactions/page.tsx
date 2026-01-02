@@ -13,7 +13,7 @@ import { SwipeableRow } from '@/components/ui/swipeable-row';
 import { TransactionEvolutionChart } from '@/components/charts/transaction-evolution-chart';
 import { getCategoryById } from '@/lib/categories';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { getTransactions, deleteTransaction } from '@/lib/firebase/transactions-service';
+import { getTransactions, deleteTransaction, updateTransaction } from '@/lib/firebase/transactions-service';
 import { Transaction } from '@/types/firestore';
 
 type FilterType = 'all' | 'income' | 'expense' | 'transfer';
@@ -32,9 +32,11 @@ export default function TransactionsPage() {
 
     // Edit/Delete state
     const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+    const [editedPayee, setEditedPayee] = useState('');
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Fetch transactions
     useEffect(() => {
@@ -85,12 +87,31 @@ export default function TransactionsPage() {
 
     const openEditDialog = (tx: Transaction) => {
         setSelectedTransaction(tx);
+        setEditedPayee(tx.payee);
         setIsEditOpen(true);
     };
 
     const openDeleteConfirm = (tx: Transaction) => {
         setSelectedTransaction(tx);
         setIsDeleteOpen(true);
+    };
+
+    const handleSaveEdit = async () => {
+        if (!user || !selectedTransaction || !editedPayee.trim()) return;
+
+        setIsSaving(true);
+        try {
+            await updateTransaction(user.uid, selectedTransaction.id, {
+                payee: editedPayee.trim(),
+            });
+            await refreshTransactions();
+            setIsEditOpen(false);
+            setSelectedTransaction(null);
+        } catch (error) {
+            console.error('Error updating transaction:', error);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleDeleteTransaction = async () => {
@@ -358,66 +379,84 @@ export default function TransactionsPage() {
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Transaction Details</DialogTitle>
+                        <DialogTitle>Edit Transaction</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 pt-4">
-                        {/* Transaction preview */}
-                        <div className="flex items-center gap-3 p-4 rounded-xl bg-muted">
+                        {/* Logo preview - updates live as you type */}
+                        <div className="flex justify-center">
                             <MerchantLogo
-                                name={selectedTransaction?.payee || ''}
+                                name={editedPayee || ''}
                                 category={selectedTransaction?.category}
                                 isIncome={selectedTransaction?.type === 'income'}
                                 size="lg"
                             />
-                            <div className="flex-1">
-                                <p className="font-semibold">{selectedTransaction?.payee}</p>
-                                <p className="text-sm text-muted-foreground">{selectedTransaction?.category}</p>
-                            </div>
-                            <span className={`text-lg font-bold ${selectedTransaction?.type === 'income' ? 'text-emerald-500' : 'text-foreground'
-                                }`}>
-                                {selectedTransaction?.type === 'income' ? '+' : '-'}
-                                {formatCurrency(selectedTransaction?.amount || 0)}
-                            </span>
                         </div>
 
-                        {/* Details */}
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between py-2 border-b border-border/50">
+                        {/* Editable payee name */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-muted-foreground">
+                                Merchant / Payee Name
+                            </label>
+                            <Input
+                                value={editedPayee}
+                                onChange={(e) => setEditedPayee(e.target.value)}
+                                placeholder="e.g., Netflix, Spotify, Salary..."
+                                className="text-lg"
+                            />
+                        </div>
+
+                        {/* Read-only details */}
+                        <div className="space-y-2 text-sm bg-muted/50 rounded-xl p-4">
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground">Amount</span>
+                                <span className={`font-bold ${selectedTransaction?.type === 'income'
+                                        ? 'text-emerald-500'
+                                        : 'text-foreground'
+                                    }`}>
+                                    {selectedTransaction?.type === 'income' ? '+' : '-'}
+                                    {formatCurrency(selectedTransaction?.amount || 0)}
+                                </span>
+                            </div>
+                            <div className="flex justify-between">
                                 <span className="text-muted-foreground">Date</span>
                                 <span className="font-medium">
                                     {selectedTransaction?.date.toDate().toLocaleDateString('es-ES', {
                                         day: 'numeric',
-                                        month: 'long',
+                                        month: 'short',
                                         year: 'numeric'
                                     })}
                                 </span>
                             </div>
-                            <div className="flex justify-between py-2 border-b border-border/50">
-                                <span className="text-muted-foreground">Type</span>
-                                <span className={`font-medium capitalize ${selectedTransaction?.type === 'income' ? 'text-emerald-500' : ''
-                                    }`}>
-                                    {selectedTransaction?.type}
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground">Category</span>
+                                <span className="font-medium capitalize">
+                                    {selectedTransaction?.category}
                                 </span>
                             </div>
-                            {selectedTransaction?.notes && (
-                                <div className="flex justify-between py-2 border-b border-border/50">
-                                    <span className="text-muted-foreground">Notes</span>
-                                    <span className="font-medium text-right max-w-[200px] truncate">
-                                        {selectedTransaction.notes}
-                                    </span>
-                                </div>
-                            )}
                         </div>
 
-                        {/* Delete button */}
-                        <Button
-                            variant="destructive"
-                            onClick={() => setIsDeleteOpen(true)}
-                            className="w-full"
-                        >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Transaction
-                        </Button>
+                        {/* Action buttons */}
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                onClick={() => setIsDeleteOpen(true)}
+                                className="flex-1"
+                            >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                            </Button>
+                            <Button
+                                onClick={handleSaveEdit}
+                                disabled={isSaving || !editedPayee.trim() || editedPayee === selectedTransaction?.payee}
+                                className="flex-1"
+                            >
+                                {isSaving ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    'Save Changes'
+                                )}
+                            </Button>
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

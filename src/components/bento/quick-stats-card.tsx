@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Wallet, CreditCard, PiggyBank, ArrowRightLeft } from 'lucide-react';
 import { BentoCard, BentoCardHeader, BentoCardContent } from './bento-grid';
+import { MerchantLogo } from '@/components/ui/merchant-logo';
 import { cn } from '@/lib/utils';
 
 // Combined Assets & Liabilities card with tabs
@@ -184,13 +185,32 @@ export function QuickStatsCard({
     );
 }
 
-// Recent activity card - now half width with amber color
+// Recent activity card - now shows mini feed of last 3 transactions
+interface RecentTransaction {
+    id: string;
+    payee: string;
+    amount: number;
+    type: 'expense' | 'income' | 'transfer';
+    category: string;
+}
+
 interface RecentActivityCardProps {
-    count: number;
+    transactions: RecentTransaction[];
     onClick?: () => void;
 }
 
-export function RecentActivityCard({ count, onClick }: RecentActivityCardProps) {
+export function RecentActivityCard({ transactions, onClick }: RecentActivityCardProps) {
+    const formatCurrency = (value: number) => {
+        return new Intl.NumberFormat('es-ES', {
+            style: 'currency',
+            currency: 'EUR',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(value);
+    };
+
+    const displayTxs = transactions.slice(0, 2);
+
     return (
         <BentoCard
             colSpan={1}
@@ -200,12 +220,36 @@ export function RecentActivityCard({ count, onClick }: RecentActivityCardProps) 
         >
             <BentoCardHeader
                 title="Recent Transactions"
-                subtitle="this week"
+                subtitle={`${transactions.length} this week`}
                 icon={<ArrowRightLeft className="w-4 h-4 text-amber-500" />}
             />
             <BentoCardContent>
-                <span className="text-2xl font-bold text-amber-500">{count}</span>
-                <span className="text-sm text-muted-foreground ml-2">transactions</span>
+                {displayTxs.length > 0 ? (
+                    <div className="space-y-2 w-full">
+                        {displayTxs.map((tx) => (
+                            <div key={tx.id} className="flex items-center gap-2">
+                                {/* Merchant logo */}
+                                <MerchantLogo
+                                    name={tx.payee}
+                                    category={tx.category}
+                                    isIncome={tx.type === 'income'}
+                                    size="xs"
+                                />
+                                {/* Name */}
+                                <span className="flex-1 text-sm truncate font-medium">
+                                    {tx.payee}
+                                </span>
+                                {/* Amount */}
+                                <span className={`text-sm font-semibold ${tx.type === 'income' ? 'text-emerald-500' : 'text-foreground'
+                                    }`}>
+                                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <span className="text-sm text-muted-foreground">No recent transactions</span>
+                )}
             </BentoCardContent>
         </BentoCard>
     );
