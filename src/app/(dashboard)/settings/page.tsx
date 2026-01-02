@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, LogOut, User, CreditCard, Moon, Bell, Shield, HelpCircle, Target } from 'lucide-react';
+import { ArrowLeft, LogOut, User, CreditCard, Moon, Sun, Monitor, Bell, Shield, HelpCircle, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -9,12 +9,14 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/lib/firebase/auth-context';
+import { useTheme, Theme } from '@/lib/theme-context';
 import { updateUserSettings } from '@/lib/firebase/settings-service';
 import { ReactNode } from 'react';
 
 export default function SettingsPage() {
     const router = useRouter();
     const { user, userProfile, signOut } = useAuth();
+    const { theme, setTheme } = useTheme();
 
     const handleSignOut = async () => {
         await signOut();
@@ -77,7 +79,42 @@ export default function SettingsPage() {
                         />
                     )
                 },
-                { icon: Moon, label: 'Appearance', description: 'Dark mode', onClick: () => { } },
+                {
+                    icon: Moon,
+                    label: 'Appearance',
+                    description: theme === 'dark' ? 'Dark mode' : theme === 'light' ? 'Light mode' : 'System',
+                    action: (
+                        <div className="flex gap-1 bg-muted/50 p-1 rounded-lg">
+                            <button
+                                onClick={() => setTheme('light')}
+                                className={`p-2 rounded-md transition-all ${theme === 'light'
+                                        ? 'bg-card text-amber-500 shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                            >
+                                <Sun className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => setTheme('dark')}
+                                className={`p-2 rounded-md transition-all ${theme === 'dark'
+                                        ? 'bg-card text-blue-500 shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                            >
+                                <Moon className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => setTheme('system')}
+                                className={`p-2 rounded-md transition-all ${theme === 'system'
+                                        ? 'bg-card text-emerald-500 shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                            >
+                                <Monitor className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )
+                },
                 { icon: Bell, label: 'Notifications', onClick: () => { } },
             ],
         },

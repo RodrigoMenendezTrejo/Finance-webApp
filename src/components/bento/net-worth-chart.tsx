@@ -12,6 +12,7 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import { BentoCard, BentoCardHeader, BentoCardContent } from './bento-grid';
+import { useTheme } from '@/lib/theme-context';
 
 interface NetWorthDataPoint {
     label: string;
@@ -44,6 +45,8 @@ export function NetWorthChart({
     hideAmounts = false,
 }: NetWorthChartProps) {
     const [timeRange, setTimeRange] = useState<TimeRange>('6M');
+    const { resolvedTheme } = useTheme();
+    const isDark = resolvedTheme === 'dark';
 
     // Get data based on selected time range
     const data = useMemo(() => {
@@ -129,7 +132,7 @@ export function NetWorthChart({
     };
 
     return (
-        <BentoCard colSpan={2} rowSpan={2} className="bg-gradient-to-br from-slate-900 to-slate-800">
+        <BentoCard colSpan={2} rowSpan={2} className={isDark ? 'bg-gradient-to-br from-slate-900 to-slate-800' : 'bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200'}>
             <BentoCardHeader
                 title="Net Worth"
                 subtitle={timeRangeLabels[timeRange]}
@@ -203,19 +206,19 @@ export function NetWorthChart({
                             {/* Clean horizontal-only gridlines */}
                             <CartesianGrid
                                 strokeDasharray="0"
-                                stroke="rgba(255,255,255,0.08)"
+                                stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}
                                 strokeWidth={1}
                                 vertical={false}
                             />
                             <XAxis
                                 dataKey="label"
-                                tick={{ fill: '#9ca3af', fontSize: 10 }}
+                                tick={{ fill: isDark ? '#9ca3af' : '#4b5563', fontSize: 10 }}
                                 axisLine={false}
                                 tickLine={false}
                             />
                             <YAxis
                                 domain={yAxisDomain}
-                                tick={{ fill: '#9ca3af', fontSize: 10 }}
+                                tick={{ fill: isDark ? '#9ca3af' : '#4b5563', fontSize: 10 }}
                                 axisLine={false}
                                 tickLine={false}
                                 tickFormatter={formatYAxis}
@@ -223,13 +226,14 @@ export function NetWorthChart({
                             />
                             <Tooltip
                                 contentStyle={{
-                                    backgroundColor: '#1e293b',
-                                    border: '1px solid #334155',
+                                    backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                                    border: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
                                     borderRadius: '8px',
                                     fontSize: '12px',
+                                    color: isDark ? '#f1f5f9' : '#1e293b',
                                 }}
                                 formatter={(value, name) => [formatCurrency(value as number), name]}
-                                labelStyle={{ color: '#9ca3af', marginBottom: '4px' }}
+                                labelStyle={{ color: isDark ? '#9ca3af' : '#64748b', marginBottom: '4px' }}
                             />
                             {/* Assets line - secondary, dashed, lower opacity */}
                             <Area

@@ -299,6 +299,125 @@ export async function getTotalSpending(
     return Object.values(spending).reduce((sum, amount) => sum + amount, 0);
 }
 
+// Get spending for last N complete months (for predictions)
+// Returns array: [lastMonth, 2monthsAgo, 3monthsAgo]
+export async function getMonthlySpendingHistory(
+    userId: string,
+    monthsBack: number = 3
+): Promise<number[]> {
+    const results: number[] = [];
+    const now = new Date();
+
+    for (let i = 1; i <= monthsBack; i++) {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+        const spending = await getTotalSpending(userId, monthStart, monthEnd);
+        results.push(spending);
+    }
+
+    return results;
+}
+
+// Get daily cumulative spending for trajectory chart
+export async function getDailyCumulativeSpending(
+    userId: string,
+    year: number,
+    month: number // 0-indexed
+): Promise<{ day: number; cumulative: number }[]> {
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0, 23, 59, 59);
+
+    const transactionsRef = getTransactionsRef(userId);
+    const q = query(
+        transactionsRef,
+        where('type', '==', 'expense'),
+        where('date', '>=', Timestamp.fromDate(startDate)),
+        where('date', '<=', Timestamp.fromDate(endDate))
+    );
+
+    const snapshot = await getDocs(q);
+
+    // Group by day
+    const dailyTotals: Record<number, number> = {};
+    snapshot.docs.forEach((doc) => {
+        const tx = doc.data() as Transaction;
+        const day = tx.date.toDate().getDate();
+        dailyTotals[day] = (dailyTotals[day] || 0) + tx.amount;
+    });
+
+    // Build cumulative array
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const result: { day: number; cumulative: number }[] = [];
+    let cumulative = 0;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        cumulative += dailyTotals[day] || 0;
+        result.push({ day, cumulative });
+    }
+
+    return result;
+}
+
+// Get category spending comparison (this month vs average)
+export async function getCategoryComparison(
+    userId: string
+): Promise<{ category: string; current: number; average: number; changePercent: number }[]> {
+    const now = new Date();
+
+    // Current month spending
+    const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentSpending = await getSpendingByCategory(userId, currentStart, now);
+
+    // Last 3 months average (excluding current)
+    const avgSpending: Record<string, number> = {};
+    let monthsWithData = 0;
+
+    for (let i = 1; i <= 3; i++) {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+        const monthSpending = await getSpendingByCategory(userId, monthStart, monthEnd);
+
+        if (Object.keys(monthSpending).length > 0) {
+            monthsWithData++;
+            for (const [cat, amount] of Object.entries(monthSpending)) {
+                avgSpending[cat] = (avgSpending[cat] || 0) + amount;
+            }
+        }
+    }
+
+    // Calculate averages
+    if (monthsWithData > 0) {
+        for (const cat of Object.keys(avgSpending)) {
+            avgSpending[cat] = avgSpending[cat] / monthsWithData;
+        }
+    }
+
+    // Build comparison array
+    const allCategories = new Set([...Object.keys(currentSpending), ...Object.keys(avgSpending)]);
+    const result: { category: string; current: number; average: number; changePercent: number }[] = [];
+
+    for (const category of allCategories) {
+        const current = currentSpending[category] || 0;
+        const average = avgSpending[category] || 0;
+
+        let changePercent = 0;
+        if (average > 0) {
+            changePercent = ((current - average) / average) * 100;
+        } else if (current > 0) {
+            changePercent = 100; // New category
+        }
+
+        if (current > 0) { // Only include categories with current spending
+            result.push({ category, current, average, changePercent });
+        }
+    }
+
+    // Sort by absolute change (biggest movers first)
+    result.sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+
+    return result;
+}
+
 // Create transfer between accounts
 export async function createTransfer(
     userId: string,
@@ -322,3 +441,4 @@ export async function createTransfer(
         ],
     });
 }
+

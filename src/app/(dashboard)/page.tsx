@@ -9,12 +9,13 @@ import { NetWorthChart } from '@/components/bento/net-worth-chart';
 import { ReceivablesCard } from '@/components/bento/receivables-card';
 import { FinancialOverviewCard, RecentActivityCard, GoalsCard } from '@/components/bento/quick-stats-card';
 import { RecurringCard } from '@/components/bento/subscriptions-card';
+import { SpendingForecastCard } from '@/components/bento/spending-forecast-card';
 import { FABButton } from '@/components/ui/fab-button';
 import { AddTransactionSheet } from '@/components/forms/add-transaction-sheet';
 import { AllocationSuggestSheet } from '@/components/forms/allocation-suggest-sheet';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getAccounts, getTotalByType, deleteAccount } from '@/lib/firebase/accounts-service';
-import { getTransactions, getTotalSpending } from '@/lib/firebase/transactions-service';
+import { getTransactions, getTotalSpending, getMonthlySpendingHistory } from '@/lib/firebase/transactions-service';
 import { getRecurringTransactions, getMonthlyRecurringTotal, processDueRecurring } from '@/lib/firebase/recurring-service';
 import { saveNetWorthSnapshot, getNetWorthHistory, aggregateByWeek, aggregateByMonth } from '@/lib/firebase/networth-service';
 import { getGoals, getGoalProgress } from '@/lib/firebase/goals-service';
@@ -54,6 +55,9 @@ export default function DashboardPage() {
         income: { total: 0, count: 0 },
         bills: { total: 0, count: 0 },
     });
+
+    // Spending history for predictions
+    const [spendingHistory, setSpendingHistory] = useState<number[]>([0, 0]);
 
     // Net worth history data for charts
     const [netWorthData1M, setNetWorthData1M] = useState<{ label: string; assets: number; liabilities: number; netWorth: number }[]>([]);
@@ -201,6 +205,10 @@ export default function DashboardPage() {
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
             const spending = await getTotalSpending(user.uid, startOfMonth, now);
             setMonthlySpending(spending);
+
+            // Get spending history for predictions (last 2 complete months)
+            const history = await getMonthlySpendingHistory(user.uid, 2);
+            setSpendingHistory(history);
 
             // Get recent transactions
             const { transactions } = await getTransactions(user.uid, { limit: 50 });
@@ -422,6 +430,15 @@ export default function DashboardPage() {
                         : 0
                     }
                     onClick={() => router.push('/goals')}
+                />
+
+                {/* Spending Forecast */}
+                <SpendingForecastCard
+                    currentSpending={monthlySpending}
+                    lastMonthSpending={spendingHistory[0] || 0}
+                    twoMonthsAgoSpending={spendingHistory[1] || 0}
+                    hideAmounts={hideAmounts}
+                    onClick={() => router.push('/insights')}
                 />
             </BentoGrid>
 

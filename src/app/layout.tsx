@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/firebase/auth-context";
+import { ThemeProvider, themeScript } from "@/lib/theme-context";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import "./globals.css";
 
@@ -43,34 +44,33 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
+        {/* Blocking script to prevent FOUC - runs before React hydrates */}
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
         suppressHydrationWarning
       >
-        <AuthProvider>
-          <AuthGuard>
-            {children}
-          </AuthGuard>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+          </AuthProvider>
+        </ThemeProvider>
         <Toaster
           position="top-center"
           richColors
-          theme="dark"
           toastOptions={{
             duration: 4000,
-            style: {
-              background: '#1e293b',
-              border: '1px solid #334155',
-            },
+            className: 'toast-theme',
           }}
         />
       </body>
     </html>
   );
 }
-

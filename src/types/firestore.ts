@@ -29,6 +29,14 @@ export interface TransactionSplit {
     isDebtSettlement?: boolean;
 }
 
+// Bill split participant (for splitting expenses with friends)
+export interface SplitParticipant {
+    name: string;           // Person's name: "Carlos", "María"
+    amount: number;         // How much they owe you
+    isPaid: boolean;        // Have they paid you back?
+    paidAt?: Timestamp;     // When they paid (if isPaid)
+}
+
 export interface Transaction {
     id: string;
     date: Timestamp;
@@ -38,6 +46,7 @@ export interface Transaction {
     amount: number; // Total transaction amount
     type: TransactionType;
     splits: TransactionSplit[];
+    splitWith?: SplitParticipant[]; // Friends who owe you for this expense
     createdAt: Timestamp;
     updatedAt: Timestamp;
 }
