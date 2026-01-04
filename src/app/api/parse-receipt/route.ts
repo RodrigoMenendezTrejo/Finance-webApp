@@ -7,9 +7,12 @@ const TEXT_MODEL = 'llama-3.3-70b-versatile';
 
 const SYSTEM_PROMPT = `You are a JSON accounting assistant. Analyse the image or text provided by the user.
 
+Current Date: {{CURRENT_DATE}}
+Note: If the year is missing in the input, assume the current year from the date above.
+
 Your task is to identify the following from receipts, invoices, or natural language descriptions:
 - Merchant/Payee name
-- Date of transaction
+- Date of transaction (YYYY-MM-DD)
 - Total amount
 - Category (use common categories like: Food & Dining, Groceries, Transport, Entertainment, Shopping, Bills & Utilities, Health, Travel, Subscriptions, Education, Personal Care, Gifts, Income, Transfer, Other)
 
@@ -75,6 +78,14 @@ export async function POST(request: NextRequest) {
         }>;
         let model: string;
 
+        const currentDate = new Date().toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        const systemMessage = SYSTEM_PROMPT.replace('{{CURRENT_DATE}}', currentDate);
+
         if (image) {
             // Convert image to base64
             const bytes = await image.arrayBuffer();
@@ -83,7 +94,7 @@ export async function POST(request: NextRequest) {
 
             model = VISION_MODEL;
             messages = [
-                { role: 'system', content: SYSTEM_PROMPT },
+                { role: 'system', content: systemMessage },
                 {
                     role: 'user',
                     content: [
@@ -103,7 +114,7 @@ export async function POST(request: NextRequest) {
         } else {
             model = TEXT_MODEL;
             messages = [
-                { role: 'system', content: SYSTEM_PROMPT },
+                { role: 'system', content: systemMessage },
                 {
                     role: 'user',
                     content: `Parse this transaction description: "${text}"`,

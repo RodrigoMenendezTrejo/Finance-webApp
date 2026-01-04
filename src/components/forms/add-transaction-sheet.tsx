@@ -38,6 +38,7 @@ export function AddTransactionSheet({
     // Editable parsed fields
     const [editMerchant, setEditMerchant] = useState('');
     const [editAmount, setEditAmount] = useState('');
+    const [editDate, setEditDate] = useState('');
     const [editCategory, setEditCategory] = useState('');
     const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
     const [categoryError, setCategoryError] = useState(false);
@@ -83,6 +84,7 @@ export function AddTransactionSheet({
             // Populate editable fields from parsed result
             setEditMerchant(result.merchant || '');
             setEditAmount(String(result.total || ''));
+            setEditDate(result.date || new Date().toISOString().split('T')[0]);
             setEditCategory(result.category || '');
             setCategoryError(false);
 
@@ -157,8 +159,8 @@ export function AddTransactionSheet({
 
             // Get a valid date (fallback to now if invalid)
             const getValidDate = () => {
-                if (!parsedResult.date) return new Date();
-                const parsed = new Date(parsedResult.date as string);
+                if (!editDate) return new Date();
+                const parsed = new Date(editDate);
                 return isNaN(parsed.getTime()) ? new Date() : parsed;
             };
             const transactionDate = getValidDate();
@@ -214,6 +216,7 @@ export function AddTransactionSheet({
         setSaveSuccess(false);
         setEditMerchant('');
         setEditAmount('');
+        setEditDate('');
         setEditCategory('');
         setTransactionType('expense');
         setCategoryError(false);
@@ -380,6 +383,16 @@ export function AddTransactionSheet({
                                     </div>
 
                                     <div>
+                                        <label className="text-sm text-muted-foreground mb-1 block">Date</label>
+                                        <input
+                                            type="date"
+                                            value={editDate}
+                                            onChange={(e) => setEditDate(e.target.value)}
+                                            className="w-full p-3 rounded-xl bg-muted border-0 focus:ring-2 focus:ring-primary"
+                                        />
+                                    </div>
+
+                                    <div>
                                         <label className="text-sm text-muted-foreground mb-1 block">Amount (€)</label>
                                         <input
                                             type="number"
@@ -429,6 +442,7 @@ export function AddTransactionSheet({
                                             setParsedResult(null);
                                             setEditMerchant('');
                                             setEditAmount('');
+                                            setEditDate('');
                                             setEditCategory('');
                                             setCategoryError(false);
                                         }}
