@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const TEXT_MODEL = 'llama-3.3-70b-versatile';
 
-const SYSTEM_PROMPT = `You are a friendly and knowledgeable personal finance assistant for a user's finance tracking app called "Sovereign Finance". 
+const SYSTEM_PROMPT = `You are a friendly and knowledgeable personal finance assistant for a user's finance tracking app called "SafeBalance". 
 
 Your role is to:
 1. Help users understand their financial situation based on their real data
