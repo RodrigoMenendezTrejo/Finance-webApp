@@ -219,7 +219,7 @@ export function ChatDialog() {
 
             {/* Chat Dialog */}
             {isOpen && (
-                <div className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-48px)] h-[600px] max-h-[calc(100vh-120px)] bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+                <div className="fixed inset-0 md:inset-auto md:bottom-6 md:right-6 z-50 w-full md:w-[380px] h-full md:h-[600px] md:max-h-[calc(100vh-120px)] bg-background md:border md:border-border md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-gradient-to-r from-primary/10 to-primary/5">
                         <div className="flex items-center gap-2">
