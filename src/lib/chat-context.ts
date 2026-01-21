@@ -2,7 +2,7 @@
 // Aggregates user financial data to provide context to the chatbot
 
 import { getAccounts } from './firebase/accounts-service';
-import { getTransactions, getSpendingByCategory, getMonthlySpendingHistory } from './firebase/transactions-service';
+import { getTransactions, getSpendingByCategory, getMonthlySpendingHistory, getSpendingProjection } from './firebase/transactions-service';
 import { getBudgetProgress } from './firebase/budget-service';
 import { getGoals } from './firebase/goals-service';
 import { getRecurringTransactions } from './firebase/recurring-service';
@@ -24,6 +24,12 @@ export interface FinancialContext {
         lastMonth: number;
         byCategory: { category: string; amount: number }[];
         averageMonthly: number;
+        projection: {
+            current: number;
+            projected: number;
+            lastMonthTotal: number;
+            isOnTrack: boolean;
+        };
     };
     budgets: {
         items: { category: string; limit: number; spent: number; percentUsed: number; isOverBudget: boolean }[];
@@ -66,12 +72,13 @@ function toMonthlyAmount(amount: number, frequency: string): number {
 
 export async function buildFinancialContext(userId: string): Promise<FinancialContext> {
     // Fetch all data in parallel
-    const [accounts, transactionsResult, budgetProgress, goals, recurring] = await Promise.all([
+    const [accounts, transactionsResult, budgetProgress, goals, recurring, projection] = await Promise.all([
         getAccounts(userId),
         getTransactions(userId, { limit: 20 }),
         getBudgetProgress(userId),
         getGoals(userId),
         getRecurringTransactions(userId),
+        getSpendingProjection(userId),
     ]);
 
     // Calculate account totals
@@ -187,6 +194,12 @@ User Financial Summary:
             lastMonth: lastMonthTotal,
             byCategory: spendingByCategory,
             averageMonthly,
+            projection: {
+                current: projection.currentSpending,
+                projected: projection.projectedTotal,
+                lastMonthTotal: projection.lastMonthTotal,
+                isOnTrack: projection.isOnTrack,
+            },
         },
         budgets: {
             items: budgetItems,
@@ -223,6 +236,11 @@ ${context.accounts.receivables.length > 0 ? '\nReceivables (money owed to user):
 
 ### SPENDING THIS MONTH:
 ${context.spending.byCategory.map(c => `- ${c.category}: €${c.amount.toFixed(2)}`).join('\n') || 'No spending recorded this month.'}
+
+### SPENDING PROJECTION (End of Month):
+- Current Spending (Day ${new Date().getDate()}): €${context.spending.projection.current.toFixed(2)}
+- Projected Total: €${context.spending.projection.projected.toFixed(2)} (Last Month Total: €${context.spending.projection.lastMonthTotal.toFixed(2)})
+- Status: ${context.spending.projection.isOnTrack ? '✅ On track to spend less than last month' : '⚠️ Projected to spend MORE than last month'}
 
 ### BUDGET STATUS:
 ${context.budgets.items.length > 0

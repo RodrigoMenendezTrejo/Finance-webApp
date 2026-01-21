@@ -358,6 +358,65 @@ export async function getDailyCumulativeSpending(
     return result;
 }
 
+// Get spending projection for the current month
+export async function getSpendingProjection(userId: string): Promise<{
+    currentSpending: number;
+    projectedTotal: number;
+    lastMonthTotal: number;
+    dailyAverage: number;
+    isOnTrack: boolean;
+}> {
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+    // Get this month's trajectory
+    const thisMonthData = await getDailyCumulativeSpending(
+        userId,
+        now.getFullYear(),
+        now.getMonth()
+    );
+
+    // Get last month's trajectory
+    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthData = await getDailyCumulativeSpending(
+        userId,
+        lastMonthDate.getFullYear(),
+        lastMonthDate.getMonth()
+    );
+
+    const currentSpending = thisMonthData[dayOfMonth - 1]?.cumulative || 0;
+    const avgPerDay = dayOfMonth > 0 ? currentSpending / dayOfMonth : 0;
+
+    // Last month totals
+    const lastMonthAtSameDay = lastMonthData[dayOfMonth - 1]?.cumulative || 0;
+    const lastMonthTotal = lastMonthData[lastMonthData.length - 1]?.cumulative || 0;
+
+    // Calculate projection (Pattern-based logic)
+    const scaleFactor = lastMonthAtSameDay > 0 ? currentSpending / lastMonthAtSameDay : 1;
+    const lastMonthRemaining = lastMonthTotal - lastMonthAtSameDay;
+
+    // Simple linear projection for fallback
+    const linearProjection = currentSpending + avgPerDay * (daysInMonth - dayOfMonth);
+
+    // Pattern-based projection
+    // We take the remaining spending from last month and scale it by our current pace
+    let projectedTotal = linearProjection;
+    if (lastMonthTotal > 0) {
+        const patternProjection = currentSpending + (lastMonthRemaining * scaleFactor);
+        // Blend: 70% pattern, 30% linear
+        projectedTotal = patternProjection * 0.7 + linearProjection * 0.3;
+    }
+
+    return {
+        currentSpending,
+        projectedTotal,
+        lastMonthTotal,
+        dailyAverage: avgPerDay,
+        isOnTrack: projectedTotal <= lastMonthTotal
+    };
+}
+
 // Get category spending comparison (this month vs average)
 export async function getCategoryComparison(
     userId: string
