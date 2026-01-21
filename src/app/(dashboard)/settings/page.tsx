@@ -88,8 +88,8 @@ export default function SettingsPage() {
                             <button
                                 onClick={() => setTheme('light')}
                                 className={`p-2 rounded-md transition-all ${theme === 'light'
-                                        ? 'bg-card text-amber-500 shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                    ? 'bg-card text-amber-500 shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
                                     }`}
                             >
                                 <Sun className="w-4 h-4" />
@@ -97,8 +97,8 @@ export default function SettingsPage() {
                             <button
                                 onClick={() => setTheme('dark')}
                                 className={`p-2 rounded-md transition-all ${theme === 'dark'
-                                        ? 'bg-card text-blue-500 shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                    ? 'bg-card text-blue-500 shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
                                     }`}
                             >
                                 <Moon className="w-4 h-4" />
@@ -106,8 +106,8 @@ export default function SettingsPage() {
                             <button
                                 onClick={() => setTheme('system')}
                                 className={`p-2 rounded-md transition-all ${theme === 'system'
-                                        ? 'bg-card text-emerald-500 shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                    ? 'bg-card text-emerald-500 shadow-sm'
+                                    : 'text-muted-foreground hover:text-foreground'
                                     }`}
                             >
                                 <Monitor className="w-4 h-4" />

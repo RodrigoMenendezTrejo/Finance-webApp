@@ -43,6 +43,9 @@ export default function InsightsPage() {
     const [trajectoryData, setTrajectoryData] = useState<{ day: number; thisMonth: number; lastMonth: number; projection?: number }[]>([]);
     const [categoryMovers, setCategoryMovers] = useState<{ category: string; current: number; average: number; changePercent: number }[]>([]);
     const [dailyAverage, setDailyAverage] = useState(0);
+    const [projectedTotal, setProjectedTotal] = useState(0);
+    const [lastMonthTotal, setLastMonthTotal] = useState(0);
+    const [currentSpendingValue, setCurrentSpendingValue] = useState(0);
 
     const now = new Date();
     const dayOfMonth = now.getDate();
@@ -74,20 +77,58 @@ export default function InsightsPage() {
                 const avgPerDay = dayOfMonth > 0 ? currentSpending / dayOfMonth : 0;
                 setDailyAverage(avgPerDay);
 
-                // Build combined trajectory data
+                // ===== SMARTER PROJECTION ALGORITHM =====
+                // Instead of simple linear projection, we use last month's pattern scaled to current pace
+
+                // Get last month's spending at the same point in the month
+                const lastMonthAtSameDay = lastMonthData[dayOfMonth - 1]?.cumulative || 0;
+                const lastMonthTotal = lastMonthData[lastMonthData.length - 1]?.cumulative || 0;
+
+                // Calculate the scale factor: how this month compares to last month at same point
+                const scaleFactor = lastMonthAtSameDay > 0
+                    ? currentSpending / lastMonthAtSameDay
+                    : 1;
+
+                // Calculate remaining portion of last month's pattern (days after current day)
+                const lastMonthRemaining = lastMonthTotal - lastMonthAtSameDay;
+
+                // Build combined trajectory data with pattern-based projection
                 const combined = thisMonthData.map((d, i) => {
                     const isToday = d.day <= dayOfMonth;
                     const isFuture = d.day > dayOfMonth;
+
+                    let projection: number | undefined;
+                    if (isFuture) {
+                        // Pattern-based: Use last month's incremental pattern, scaled by current pace
+                        const lastMonthAtDay = lastMonthData[i]?.cumulative || 0;
+                        const lastMonthIncrement = lastMonthAtDay - lastMonthAtSameDay;
+
+                        // Blend pattern-based projection with linear for stability
+                        const patternProjection = currentSpending + (lastMonthIncrement * scaleFactor);
+                        const linearProjection = currentSpending + avgPerDay * (d.day - dayOfMonth);
+
+                        // Weight: 70% pattern-based, 30% linear (for smoothness when last month data is sparse)
+                        const patternWeight = lastMonthRemaining > 0 ? 0.7 : 0;
+                        projection = patternProjection * patternWeight + linearProjection * (1 - patternWeight);
+                    }
 
                     return {
                         day: d.day,
                         thisMonth: isToday ? d.cumulative : undefined,
                         lastMonth: lastMonthData[i]?.cumulative || 0,
-                        projection: isFuture ? currentSpending + avgPerDay * (d.day - dayOfMonth) : undefined,
+                        projection,
                     };
                 });
 
                 setTrajectoryData(combined as any);
+
+                // Set values for the summary display
+                setCurrentSpendingValue(currentSpending);
+                setLastMonthTotal(lastMonthTotal);
+                // Get the projected end-of-month value (last item's projection)
+                const endOfMonthProjection = combined[combined.length - 1]?.projection ||
+                    (currentSpending + avgPerDay * (daysInMonth - dayOfMonth));
+                setProjectedTotal(endOfMonthProjection);
 
                 // Get category comparison
                 const movers = await getCategoryComparison(user.uid);
@@ -245,8 +286,34 @@ export default function InsightsPage() {
                                 </ResponsiveContainer>
                             </div>
 
+                            {/* Projection Summary */}
+                            <div className="mt-4 p-3 rounded-xl bg-muted/50 space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-muted-foreground">Current spending</span>
+                                    <span className="font-semibold">{formatCurrency(currentSpendingValue)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-muted-foreground">Projected by end of month</span>
+                                    <span className="font-bold text-violet-500">{formatCurrency(projectedTotal)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-muted-foreground">Last month total</span>
+                                    <span className="font-medium">{formatCurrency(lastMonthTotal)}</span>
+                                </div>
+                                {projectedTotal > 0 && lastMonthTotal > 0 && (
+                                    <div className="flex justify-between items-center pt-2 border-t border-border/50">
+                                        <span className="text-sm font-medium">Projected difference</span>
+                                        <span className={`font-bold ${projectedTotal > lastMonthTotal ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                            {projectedTotal > lastMonthTotal ? '+' : ''}
+                                            {formatCurrency(projectedTotal - lastMonthTotal)}
+                                            <span className="text-xs ml-1">({((projectedTotal - lastMonthTotal) / lastMonthTotal * 100).toFixed(0)}%)</span>
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Daily rate context */}
-                            <p className="text-xs text-muted-foreground text-center mt-2">
+                            <p className="text-xs text-muted-foreground text-center mt-3">
                                 Averaging <span className="font-medium text-foreground">{formatCurrency(dailyAverage)}</span>/day
                             </p>
                         </CardContent>

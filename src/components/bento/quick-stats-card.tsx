@@ -297,3 +297,57 @@ export function GoalsCard({ goalCount, totalProgress, onClick }: GoalsCardProps)
     );
 }
 
+// Budget limits card
+interface BudgetsCardProps {
+    budgetCount: number;
+    usedPercent: number; // 0-100 overall budget usage
+    overBudgetCount: number;
+    onClick?: () => void;
+}
+
+export function BudgetsCard({ budgetCount, usedPercent, overBudgetCount, onClick }: BudgetsCardProps) {
+    return (
+        <BentoCard
+            colSpan={2}
+            rowSpan={1}
+            onClick={onClick}
+            className="bg-gradient-to-br from-violet-500/10 to-violet-600/5"
+        >
+            <BentoCardHeader
+                title="Budget Limits"
+                subtitle={budgetCount > 0 ? `${budgetCount} categories` : 'Set limits'}
+                icon={<Wallet className="w-4 h-4 text-violet-500" />}
+            />
+            <BentoCardContent>
+                {budgetCount > 0 ? (
+                    <div className="w-full">
+                        <div className="flex justify-between text-sm mb-1">
+                            <span className="text-muted-foreground">Usage</span>
+                            <span className={`font-medium ${overBudgetCount > 0 ? 'text-rose-500' :
+                                usedPercent > 80 ? 'text-amber-500' :
+                                    'text-violet-500'
+                                }`}>
+                                {usedPercent.toFixed(0)}%
+                            </span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all ${overBudgetCount > 0 ? 'bg-rose-500' :
+                                    usedPercent > 80 ? 'bg-amber-500' :
+                                        'bg-violet-500'
+                                    }`}
+                                style={{ width: `${Math.min(usedPercent, 100)}%` }}
+                            />
+                        </div>
+                        {overBudgetCount > 0 && (
+                            <p className="text-xs text-rose-500 mt-1">{overBudgetCount} over budget</p>
+                        )}
+                    </div>
+                ) : (
+                    <span className="text-sm text-muted-foreground">Tap to set limits</span>
+                )}
+            </BentoCardContent>
+        </BentoCard>
+    );
+}
+

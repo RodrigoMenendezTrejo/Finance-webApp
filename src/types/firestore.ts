@@ -67,6 +67,9 @@ export interface Budget {
     amount: number;
     period: 'monthly' | 'annual';
     currency: string;
+    alertThreshold: number; // Percentage at which to warn (default 80)
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
 }
 
 // User profile

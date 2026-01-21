@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Search, Filter, Loader2, Trash2, X, Check, List, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Search, Filter, Loader2, Trash2, X, Check, List, BarChart3, Calendar, Tag } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -11,12 +11,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { MerchantLogo } from '@/components/ui/merchant-logo';
 import { SwipeableRow } from '@/components/ui/swipeable-row';
 import { TransactionEvolutionChart } from '@/components/charts/transaction-evolution-chart';
-import { getCategoryById } from '@/lib/categories';
+import { getCategoryById, DEFAULT_CATEGORIES } from '@/lib/categories';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTransactions, deleteTransaction, updateTransaction } from '@/lib/firebase/transactions-service';
 import { Transaction } from '@/types/firestore';
 
 type FilterType = 'all' | 'income' | 'expense' | 'transfer';
+type DateRange = 'all' | 'today' | 'week' | 'month' | 'quarter' | 'year';
 type ViewMode = 'list' | 'chart';
 
 export default function TransactionsPage() {
@@ -27,6 +28,8 @@ export default function TransactionsPage() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState<FilterType>('all');
+    const [filterCategory, setFilterCategory] = useState<string>('all');
+    const [filterDateRange, setFilterDateRange] = useState<DateRange>('all');
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [isFilterOpen, setIsFilterOpen] = useState(false);
 
@@ -131,23 +134,80 @@ export default function TransactionsPage() {
         }
     };
 
-    // Convert Firestore timestamps to dates and group
-    const processedTransactions = transactions
-        .map(tx => ({
-            ...tx,
-            dateObj: tx.date.toDate(),
-        }))
-        .filter(tx => {
-            // Apply type filter
-            if (filterType !== 'all' && tx.type !== filterType) return false;
-            // Apply search filter
-            if (searchQuery) {
-                const query = searchQuery.toLowerCase();
-                return tx.payee.toLowerCase().includes(query) ||
-                    tx.category.toLowerCase().includes(query);
-            }
-            return true;
-        });
+    // Helper function to get date range boundaries
+    const getDateRangeBounds = (range: DateRange): { start: Date; end: Date } | null => {
+        if (range === 'all') return null;
+        const now = new Date();
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        let start: Date;
+
+        switch (range) {
+            case 'today':
+                start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+                break;
+            case 'week':
+                start = new Date(now);
+                start.setDate(now.getDate() - 7);
+                start.setHours(0, 0, 0, 0);
+                break;
+            case 'month':
+                start = new Date(now.getFullYear(), now.getMonth(), 1);
+                break;
+            case 'quarter':
+                start = new Date(now);
+                start.setMonth(now.getMonth() - 3);
+                start.setHours(0, 0, 0, 0);
+                break;
+            case 'year':
+                start = new Date(now.getFullYear(), 0, 1);
+                break;
+            default:
+                return null;
+        }
+        return { start, end };
+    };
+
+    // Check if any filter is active
+    const hasActiveFilters = filterType !== 'all' || filterCategory !== 'all' || filterDateRange !== 'all';
+
+    // Clear all filters
+    const clearAllFilters = () => {
+        setFilterType('all');
+        setFilterCategory('all');
+        setFilterDateRange('all');
+    };
+
+    // Convert Firestore timestamps to dates and apply filters
+    const processedTransactions = useMemo(() => {
+        const dateBounds = getDateRangeBounds(filterDateRange);
+
+        return transactions
+            .map(tx => ({
+                ...tx,
+                dateObj: tx.date.toDate(),
+            }))
+            .filter(tx => {
+                // Apply type filter
+                if (filterType !== 'all' && tx.type !== filterType) return false;
+
+                // Apply category filter
+                if (filterCategory !== 'all' && tx.category !== filterCategory) return false;
+
+                // Apply date range filter
+                if (dateBounds) {
+                    const txDate = tx.dateObj;
+                    if (txDate < dateBounds.start || txDate > dateBounds.end) return false;
+                }
+
+                // Apply search filter
+                if (searchQuery) {
+                    const query = searchQuery.toLowerCase();
+                    return tx.payee.toLowerCase().includes(query) ||
+                        tx.category.toLowerCase().includes(query);
+                }
+                return true;
+            });
+    }, [transactions, filterType, filterCategory, filterDateRange, searchQuery]);
 
     // Group transactions by date
     const groupedTransactions = processedTransactions.reduce((groups, tx) => {
@@ -210,12 +270,15 @@ export default function TransactionsPage() {
                         <div className="w-px bg-border/50 mx-1" />
                         <button
                             onClick={() => setIsFilterOpen(true)}
-                            className={`p-2 rounded-md transition-all ${filterType !== 'all'
+                            className={`p-2 rounded-md transition-all relative ${hasActiveFilters
                                 ? 'bg-primary/20 text-primary'
                                 : 'text-muted-foreground hover:text-foreground'
                                 }`}
                         >
                             <Filter className="w-4 h-4" />
+                            {hasActiveFilters && (
+                                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-primary" />
+                            )}
                         </button>
                     </div>
                 </div>
@@ -350,27 +413,112 @@ export default function TransactionsPage() {
 
             {/* Filter Sheet */}
             <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-                <SheetContent side="bottom" className="h-auto rounded-t-2xl">
+                <SheetContent side="bottom" className="h-auto max-h-[80vh] rounded-t-2xl overflow-y-auto">
                     <SheetHeader>
-                        <SheetTitle>Filter Transactions</SheetTitle>
+                        <div className="flex items-center justify-between">
+                            <SheetTitle>Filter Transactions</SheetTitle>
+                            {hasActiveFilters && (
+                                <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-primary">
+                                    Clear All
+                                </Button>
+                            )}
+                        </div>
                     </SheetHeader>
-                    <div className="py-4 space-y-3">
-                        {(['all', 'income', 'expense', 'transfer'] as FilterType[]).map((type) => (
-                            <button
-                                key={type}
-                                onClick={() => {
-                                    setFilterType(type);
-                                    setIsFilterOpen(false);
-                                }}
-                                className={`w-full p-3 rounded-xl text-left font-medium transition-colors flex items-center justify-between ${filterType === type
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted hover:bg-muted/80'
-                                    }`}
-                            >
-                                <span className="capitalize">{type === 'all' ? 'All Transactions' : type}</span>
-                                {filterType === type && <Check className="w-5 h-5" />}
-                            </button>
-                        ))}
+                    <div className="py-4 space-y-6">
+                        {/* Transaction Type */}
+                        <div>
+                            <h4 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                                <Filter className="w-4 h-4" />
+                                Transaction Type
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                                {(['all', 'income', 'expense', 'transfer'] as FilterType[]).map((type) => (
+                                    <button
+                                        key={type}
+                                        onClick={() => setFilterType(type)}
+                                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${filterType === type
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'bg-muted hover:bg-muted/80'
+                                            }`}
+                                    >
+                                        {type === 'all' ? 'All' : type.charAt(0).toUpperCase() + type.slice(1)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Date Range */}
+                        <div>
+                            <h4 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                                <Calendar className="w-4 h-4" />
+                                Date Range
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { value: 'all', label: 'All Time' },
+                                    { value: 'today', label: 'Today' },
+                                    { value: 'week', label: 'Last 7 Days' },
+                                    { value: 'month', label: 'This Month' },
+                                    { value: 'quarter', label: 'Last 3 Months' },
+                                    { value: 'year', label: 'This Year' },
+                                ].map(({ value, label }) => (
+                                    <button
+                                        key={value}
+                                        onClick={() => setFilterDateRange(value as DateRange)}
+                                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${filterDateRange === value
+                                            ? 'bg-emerald-600 text-white'
+                                            : 'bg-muted hover:bg-muted/80'
+                                            }`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Category */}
+                        <div>
+                            <h4 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                                <Tag className="w-4 h-4" />
+                                Category
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => setFilterCategory('all')}
+                                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${filterCategory === 'all'
+                                        ? 'bg-violet-600 text-white'
+                                        : 'bg-muted hover:bg-muted/80'
+                                        }`}
+                                >
+                                    All Categories
+                                </button>
+                                {DEFAULT_CATEGORIES
+                                    .filter(cat => cat.id !== 'income' && cat.id !== 'transfer')
+                                    .map((cat) => (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => setFilterCategory(cat.id)}
+                                            className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${filterCategory === cat.id
+                                                ? 'bg-violet-600 text-white'
+                                                : 'bg-muted hover:bg-muted/80'
+                                                }`}
+                                        >
+                                            <span>{cat.icon}</span>
+                                            {cat.name}
+                                        </button>
+                                    ))}
+                            </div>
+                        </div>
+
+                        {/* Apply button */}
+                        <Button className="w-full" onClick={() => setIsFilterOpen(false)}>
+                            Apply Filters
+                            {hasActiveFilters && (
+                                <span className="ml-2 px-2 py-0.5 rounded-full bg-white/20 text-xs">
+                                    {[filterType !== 'all', filterCategory !== 'all', filterDateRange !== 'all'].filter(Boolean).length}
+                                </span>
+                            )}
+                        </Button>
                     </div>
                 </SheetContent>
             </Sheet>
@@ -410,8 +558,8 @@ export default function TransactionsPage() {
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">Amount</span>
                                 <span className={`font-bold ${selectedTransaction?.type === 'income'
-                                        ? 'text-emerald-500'
-                                        : 'text-foreground'
+                                    ? 'text-emerald-500'
+                                    : 'text-foreground'
                                     }`}>
                                     {selectedTransaction?.type === 'income' ? '+' : '-'}
                                     {formatCurrency(selectedTransaction?.amount || 0)}

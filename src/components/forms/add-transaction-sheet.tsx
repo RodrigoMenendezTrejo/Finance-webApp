@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { Camera, Send, Loader2, Check } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Camera, Send, Loader2, Check, Wallet, ChevronDown } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { createExpenseWithDebt, createTransaction } from '@/lib/firebase/transactions-service';
-import { createAccount, getAccountsByType } from '@/lib/firebase/accounts-service';
+import { createAccount, getAccountsByType, getAccounts } from '@/lib/firebase/accounts-service';
 import { AllocationSuggestSheet } from './allocation-suggest-sheet';
+import { findBestCategory, getCategoryById } from '@/lib/categories';
+import { Account } from '@/types/firestore';
 
 interface AddTransactionSheetProps {
     open: boolean;
@@ -42,6 +44,31 @@ export function AddTransactionSheet({
     const [editCategory, setEditCategory] = useState('');
     const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
     const [categoryError, setCategoryError] = useState(false);
+
+    // Account selection state
+    const [availableAccounts, setAvailableAccounts] = useState<Account[]>([]);
+    const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+    const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
+
+    // Fetch accounts when sheet opens
+    useEffect(() => {
+        async function fetchAccounts() {
+            if (!user || !open) return;
+            try {
+                const accounts = await getAccounts(user.uid);
+                // Filter to only asset accounts (bank, cash, etc.)
+                const assetAccounts = accounts.filter(a => a.type === 'asset');
+                setAvailableAccounts(assetAccounts);
+                // Default to first account if not already selected
+                if (assetAccounts.length > 0 && !selectedAccountId) {
+                    setSelectedAccountId(assetAccounts[0].id);
+                }
+            } catch (error) {
+                console.error('Error fetching accounts:', error);
+            }
+        }
+        fetchAccounts();
+    }, [user, open]);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -124,12 +151,17 @@ export function AddTransactionSheet({
 
         setIsSaving(true);
         try {
-            // Get user's default asset account (first one)
-            const assetAccounts = await getAccountsByType(user.uid, 'asset');
-            const sourceAccountId = assetAccounts[0]?.id;
+            // Use selected account or fallback to first asset account
+            let sourceAccountId = selectedAccountId;
+            if (!sourceAccountId) {
+                const assetAccounts = await getAccountsByType(user.uid, 'asset');
+                sourceAccountId = assetAccounts[0]?.id;
+            }
 
             if (!sourceAccountId) {
                 console.error('No source account found');
+                alert('Please select an account');
+                setIsSaving(false);
                 return;
             }
 
@@ -165,13 +197,15 @@ export function AddTransactionSheet({
             };
             const transactionDate = getValidDate();
 
+            // Normalize category to ID (e.g., 'Food & Dining' -> 'food')
+            const categoryId = findBestCategory(editCategory).id;
 
             if (transactionType === 'income') {
                 // Create income transaction (adds to account)
                 await createTransaction(user.uid, {
                     date: transactionDate,
                     payee: editMerchant || 'Income',
-                    category: editCategory.toLowerCase(),
+                    category: categoryId,
                     notes: textInput || '',
                     amount: amount,
                     type: 'income',
@@ -184,7 +218,7 @@ export function AddTransactionSheet({
                 await createExpenseWithDebt(user.uid, {
                     date: transactionDate,
                     payee: editMerchant || 'Unknown',
-                    category: editCategory.toLowerCase(),
+                    category: categoryId,
                     notes: textInput || '',
                     totalAmount: amount,
                     sourceAccountId,
@@ -421,6 +455,67 @@ export function AddTransactionSheet({
                                         {categoryError && (
                                             <p className="text-rose-500 text-sm mt-1">Please select a category</p>
                                         )}
+                                    </div>
+
+                                    {/* Account Selector */}
+                                    <div>
+                                        <label className="text-sm text-muted-foreground mb-1 block">
+                                            Account <span className="text-rose-500">*</span>
+                                        </label>
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
+                                                className="w-full p-3 rounded-xl bg-muted border-0 focus:ring-2 focus:ring-primary flex items-center justify-between"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <Wallet className="w-5 h-5 text-muted-foreground" />
+                                                    <span>
+                                                        {availableAccounts.find(a => a.id === selectedAccountId)?.name || 'Select Account'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm text-muted-foreground">
+                                                        {availableAccounts.find(a => a.id === selectedAccountId)?.balance.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) || ''}
+                                                    </span>
+                                                    <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isAccountDropdownOpen ? 'rotate-180' : ''}`} />
+                                                </div>
+                                            </button>
+
+                                            {isAccountDropdownOpen && (
+                                                <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
+                                                    {availableAccounts.map((account) => (
+                                                        <button
+                                                            key={account.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedAccountId(account.id);
+                                                                setIsAccountDropdownOpen(false);
+                                                            }}
+                                                            className={`w-full p-3 flex items-center justify-between hover:bg-muted transition-colors ${selectedAccountId === account.id ? 'bg-primary/10' : ''}`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-lg">{account.icon}</span>
+                                                                <span className="font-medium">{account.name}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm text-muted-foreground">
+                                                                    {account.balance.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                                                                </span>
+                                                                {selectedAccountId === account.id && (
+                                                                    <Check className="w-4 h-4 text-primary" />
+                                                                )}
+                                                            </div>
+                                                        </button>
+                                                    ))}
+                                                    {availableAccounts.length === 0 && (
+                                                        <div className="p-3 text-center text-muted-foreground">
+                                                            No accounts available
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
