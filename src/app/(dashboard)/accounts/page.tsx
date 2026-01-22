@@ -2,28 +2,62 @@
 
 import { useState, Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Plus, Wallet, CreditCard, Users, Loader2, Trash2, Check, Pencil, Camera, ArrowLeftRight } from 'lucide-react';
+import {
+    ArrowLeft, Plus, Wallet, CreditCard, Users, Loader2,
+    Trash2, Check, Pencil, Camera, ArrowLeftRight, Share2, X
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import {
+    Dialog, DialogContent, DialogHeader, DialogTitle,
+    DialogFooter, DialogDescription, DialogTrigger
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { getAccounts, createAccount, updateAccount, deleteAccount, markLiabilityPaid, getAccountsByType as getAccountsByTypeFromDb } from '@/lib/firebase/accounts-service';
-import { createTransaction, createTransfer } from '@/lib/firebase/transactions-service';
-import { rebalanceGoalsForNewBalance } from '@/lib/firebase/goals-service';
 import { Account, AccountType } from '@/types/firestore';
+import {
+    getAccounts,
+    createAccount,
+    updateAccount,
+    deleteAccount,
+    markLiabilityPaid
+} from '@/lib/firebase/accounts-service';
+import { rebalanceGoalsForNewBalance } from '@/lib/firebase/goals-service';
+import {
+    createTransaction,
+    createTransfer
+} from '@/lib/firebase/transactions-service';
 
+// Configuration for tabs
 const tabConfig = {
-    asset: { icon: Wallet, label: 'Assets', color: 'text-blue-500' },
-    liability: { icon: CreditCard, label: 'Liabilities', color: 'text-rose-500' },
-    receivable: { icon: Users, label: 'Receivables', color: 'text-emerald-500' },
+    asset: {
+        label: 'Assets',
+        icon: Wallet,
+        color: 'text-emerald-500',
+    },
+    liability: {
+        label: 'Liabilities',
+        icon: CreditCard,
+        color: 'text-rose-500',
+    },
+    receivable: {
+        label: 'Receivables',
+        icon: Users,
+        color: 'text-emerald-500',
+    },
 };
 
 const accountIcons: Record<AccountType, string[]> = {
-    asset: ['🏦', '💵', '🐷', '💰', '📈'],
-    liability: ['💳', '🏠', '🚗', '📱'],
-    receivable: ['👤', '👥', '🤝'],
+    asset: ['💰', '🏦', '💵', '💳', '🏡', '🚗', '💎', '📈', '🐷'],
+    liability: ['💳', '🏠', '🎓', '🏥', '📉', '🏦', '🧾'],
+    receivable: ['👤', '👥', '🤝', '📄', '💼'],
+};
+
+// Helper since it was missing
+const getAccountsByTypeFromDb = async (userId: string, type: AccountType) => {
+    const data = await getAccounts(userId);
+    return data.filter(a => a.type === type);
 };
 
 function AccountsContent() {
@@ -31,7 +65,7 @@ function AccountsContent() {
     const searchParams = useSearchParams();
     const { user } = useAuth();
 
-    const initialTab = searchParams.get('type') as AccountType || 'asset';
+    const initialTab = (searchParams.get('type') as AccountType) || 'asset';
     const [activeTab, setActiveTab] = useState<string>(initialTab);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [loading, setLoading] = useState(true);
@@ -86,6 +120,12 @@ function AccountsContent() {
     const [transferNotes, setTransferNotes] = useState('');
     const [isTransferring, setIsTransferring] = useState(false);
 
+    // Share Receivables State
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedReceivables, setSelectedReceivables] = useState<Set<string>>(new Set());
+    const [isSharing, setIsSharing] = useState(false);
+    const shareCardRef = useRef<HTMLDivElement>(null);
+
     // Fetch accounts
     useEffect(() => {
         async function fetchAccounts() {
@@ -118,6 +158,9 @@ function AccountsContent() {
         if (!user) return;
         const data = await getAccounts(user.uid);
         setAccounts(data);
+        // Clear selection on refresh
+        setSelectedReceivables(new Set());
+        setIsSelectionMode(false);
     };
 
     const formatCurrency = (value: number) => {
@@ -134,6 +177,76 @@ function AccountsContent() {
     const getTotal = (type: AccountType) => {
         return getAccountsByType(type).reduce((sum, acc) => sum + acc.balance, 0);
     };
+
+    // Share Logic
+    const toggleSelection = (id: string) => {
+        const newSelected = new Set(selectedReceivables);
+        if (newSelected.has(id)) {
+            newSelected.delete(id);
+        } else {
+            newSelected.add(id);
+        }
+        setSelectedReceivables(newSelected);
+    };
+
+    const handleShare = async () => {
+        if (selectedReceivables.size === 0 || !shareCardRef.current) return;
+        setIsSharing(true);
+
+        try {
+            // Check if Web Share API is supported (or if just file sharing is supported)
+            if (!navigator.share) {
+                alert('Sharing is not supported on this browser/device.');
+                return;
+            }
+
+            // Import html2canvas dynamically to avoid SSR issues
+            const html2canvas = (await import('html2canvas')).default;
+
+            // Generate image
+            const canvas = await html2canvas(shareCardRef.current, {
+                backgroundColor: '#1E293B', // Dark slate background for clean look
+                scale: 2, // High res
+            } as any);
+
+            const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (!blob) throw new Error('Failed to generate image');
+
+            const file = new File([blob], 'payment_reminder.png', { type: 'image/png' });
+
+            // Share
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: 'Payment Reminder',
+                    text: 'Here is a summary of the shared expenses.',
+                });
+            } else {
+                // Fallback for desktop or unsupported file sharing (e.g. just download)
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/png');
+                link.download = 'payment_reminder.png';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            // Reset mode after successful share
+            setIsSelectionMode(false);
+            setSelectedReceivables(new Set());
+
+        } catch (error) {
+            console.error('Error sharing:', error);
+            // Ignore AbortError (user cancelled share)
+            if ((error as Error).name !== 'AbortError') {
+                alert('Failed to share due to an error.');
+            }
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    // ... (rest of methods)
 
     // Photo handling for Add dialog
     const handleAddPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -466,154 +579,207 @@ function AccountsContent() {
                     <h1 className="text-xl font-bold">Accounts</h1>
 
                     <div className="ml-auto flex gap-2">
-                        <Button size="sm" variant="outline" onClick={openTransferDialog}>
-                            <ArrowLeftRight className="w-4 h-4 mr-1" />
-                            Transfer
-                        </Button>
-                        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-                            <DialogTrigger asChild>
-                                <Button size="sm">
-                                    <Plus className="w-4 h-4 mr-1" />
-                                    Add
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Add {tabConfig[activeTab as keyof typeof tabConfig].label.slice(0, -1)}</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4 pt-4">
-                                    <div>
-                                        <label className="text-sm text-muted-foreground mb-1 block">Name</label>
-                                        <Input
-                                            placeholder={activeTab === 'receivable' ? "Person's name" : 'Account name'}
-                                            value={newAccountName}
-                                            onChange={(e) => setNewAccountName(e.target.value)}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-sm text-muted-foreground mb-1 block">
-                                            {activeTab === 'receivable' ? 'Amount Owed' : 'Initial Balance'}
-                                        </label>
-                                        <Input
-                                            type="number"
-                                            placeholder="0.00"
-                                            value={newAccountBalance}
-                                            onChange={(e) => setNewAccountBalance(e.target.value)}
-                                        />
-                                    </div>
-                                    {(activeTab === 'receivable' || activeTab === 'liability') && (
+                        {/* Share Controls for Receivables */}
+                        {activeTab === 'receivable' && (
+                            <>
+                                {isSelectionMode ? (
+                                    <>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => {
+                                                setIsSelectionMode(false);
+                                                setSelectedReceivables(new Set());
+                                            }}
+                                        >
+                                            <X className="w-4 h-4 mr-1" />
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="default"
+                                            onClick={handleShare}
+                                            disabled={selectedReceivables.size === 0 || isSharing}
+                                            className="bg-emerald-500 hover:bg-emerald-600 text-white"
+                                        >
+                                            {isSharing ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <>
+                                                    <Share2 className="w-4 h-4 mr-1" />
+                                                    Share ({selectedReceivables.size})
+                                                </>
+                                            )}
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setIsSelectionMode(true)}
+                                    >
+                                        Select
+                                    </Button>
+                                )}
+                            </>
+                        )}
+
+                        {!isSelectionMode && (
+                            <Button size="sm" variant="outline" onClick={openTransferDialog}>
+                                <ArrowLeftRight className="w-4 h-4 mr-1" />
+                                Transfer
+                            </Button>
+                        )}
+                        {!isSelectionMode && (
+                            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                                <DialogTrigger asChild>
+                                    <Button size="sm">
+                                        <Plus className="w-4 h-4 mr-1" />
+                                        Add
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Add {tabConfig[activeTab as keyof typeof tabConfig].label.slice(0, -1)}</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-4 pt-4">
+                                        <div>
+                                            <label className="text-sm text-muted-foreground mb-1 block">Name</label>
+                                            <Input
+                                                placeholder={activeTab === 'receivable' ? "Person's name" : 'Account name'}
+                                                value={newAccountName}
+                                                onChange={(e) => setNewAccountName(e.target.value)}
+                                            />
+                                        </div>
                                         <div>
                                             <label className="text-sm text-muted-foreground mb-1 block">
-                                                {activeTab === 'receivable' ? 'Reason (what do they owe for?)' : 'Reason (what do you owe for?)'}
+                                                {activeTab === 'receivable' ? 'Amount Owed' : 'Initial Balance'}
                                             </label>
-                                            <div className="flex gap-2">
-                                                <Input
-                                                    placeholder="e.g., Food, Gas, Rent split"
-                                                    value={newAccountCategory}
-                                                    onChange={(e) => setNewAccountCategory(e.target.value)}
-                                                    className="flex-1"
-                                                />
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="icon"
-                                                    onClick={() => addFileInputRef.current?.click()}
-                                                    title="Take photo to detect category"
-                                                >
-                                                    <Camera className="w-4 h-4" />
-                                                </Button>
-                                                <input
-                                                    ref={addFileInputRef}
-                                                    type="file"
-                                                    accept="image/*"
-                                                    capture="environment"
-                                                    onChange={handleAddPhotoSelect}
-                                                    className="hidden"
-                                                />
-                                            </div>
-                                            {addPhotoPreview && (
-                                                <div className="mt-3 space-y-2">
-                                                    <div className="relative inline-block">
-                                                        <img
-                                                            src={addPhotoPreview}
-                                                            alt="Preview"
-                                                            className="rounded-lg h-24 object-cover"
-                                                        />
-                                                        <button
-                                                            onClick={() => setAddPhotoPreview(null)}
-                                                            className="absolute -top-2 -right-2 w-6 h-6 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-sm font-bold"
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    </div>
+                                            <Input
+                                                type="number"
+                                                placeholder="0.00"
+                                                value={newAccountBalance}
+                                                onChange={(e) => setNewAccountBalance(e.target.value)}
+                                            />
+                                        </div>
+                                        {(activeTab === 'receivable' || activeTab === 'liability') && (
+                                            <div>
+                                                <label className="text-sm text-muted-foreground mb-1 block">
+                                                    {activeTab === 'receivable' ? 'Reason (what do they owe for?)' : 'Reason (what do you owe for?)'}
+                                                </label>
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        placeholder="e.g., Food, Gas, Rent split"
+                                                        value={newAccountCategory}
+                                                        onChange={(e) => setNewAccountCategory(e.target.value)}
+                                                        className="flex-1"
+                                                    />
                                                     <Button
                                                         type="button"
-                                                        size="sm"
-                                                        variant="secondary"
-                                                        onClick={analyzeAddPhoto}
-                                                        disabled={isAddAnalyzing}
-                                                        className="w-full"
+                                                        variant="outline"
+                                                        size="icon"
+                                                        onClick={() => addFileInputRef.current?.click()}
+                                                        title="Take photo to detect category"
                                                     >
-                                                        {isAddAnalyzing ? (
-                                                            <>
-                                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                                Detecting...
-                                                            </>
-                                                        ) : (
-                                                            'Detect Category from Photo'
-                                                        )}
+                                                        <Camera className="w-4 h-4" />
                                                     </Button>
+                                                    <input
+                                                        ref={addFileInputRef}
+                                                        type="file"
+                                                        accept="image/*"
+                                                        capture="environment"
+                                                        onChange={handleAddPhotoSelect}
+                                                        className="hidden"
+                                                    />
                                                 </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {activeTab === 'asset' && (
-                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
-                                            <input
-                                                type="checkbox"
-                                                id="newIsGoalAccount"
-                                                checked={newIsGoalAccount}
-                                                onChange={(e) => setNewIsGoalAccount(e.target.checked)}
-                                                className="rounded"
-                                            />
-                                            <label htmlFor="newIsGoalAccount" className="text-sm flex-1">
-                                                <span className="font-medium">🎯 Use as Goal Account</span>
-                                                <span className="text-muted-foreground block text-xs">Link savings goals to this account</span>
-                                            </label>
-                                        </div>
-                                    )}
-                                    <div>
-                                        <label className="text-sm text-muted-foreground mb-1 block">Icon</label>
-                                        <div className="flex gap-2 flex-wrap">
-                                            {accountIcons[activeTab as AccountType].map((icon) => (
-                                                <button
-                                                    key={icon}
-                                                    onClick={() => setNewAccountIcon(icon)}
-                                                    className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl
+                                                {addPhotoPreview && (
+                                                    <div className="mt-3 space-y-2">
+                                                        <div className="relative inline-block">
+                                                            <img
+                                                                src={addPhotoPreview}
+                                                                alt="Preview"
+                                                                className="rounded-lg h-24 object-cover"
+                                                            />
+                                                            <button
+                                                                onClick={() => setAddPhotoPreview(null)}
+                                                                className="absolute -top-2 -right-2 w-6 h-6 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-sm font-bold"
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="secondary"
+                                                            onClick={analyzeAddPhoto}
+                                                            disabled={isAddAnalyzing}
+                                                            className="w-full"
+                                                        >
+                                                            {isAddAnalyzing ? (
+                                                                <>
+                                                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                                    Detecting...
+                                                                </>
+                                                            ) : (
+                                                                'Detect Category from Photo'
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        {activeTab === 'asset' && (
+                                            <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                                                <input
+                                                    type="checkbox"
+                                                    id="newIsGoalAccount"
+                                                    checked={newIsGoalAccount}
+                                                    onChange={(e) => setNewIsGoalAccount(e.target.checked)}
+                                                    className="rounded"
+                                                />
+                                                <label htmlFor="newIsGoalAccount" className="text-sm flex-1">
+                                                    <span className="font-medium">🎯 Use as Goal Account</span>
+                                                    <span className="text-muted-foreground block text-xs">Link savings goals to this account</span>
+                                                </label>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <label className="text-sm text-muted-foreground mb-1 block">Icon</label>
+                                            <div className="flex gap-2 flex-wrap">
+                                                {accountIcons[activeTab as AccountType].map((icon) => (
+                                                    <button
+                                                        key={icon}
+                                                        onClick={() => setNewAccountIcon(icon)}
+                                                        className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl
                           ${newAccountIcon === icon ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}
                         `}
-                                                >
-                                                    {icon}
-                                                </button>
-                                            ))}
+                                                    >
+                                                        {icon}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
+                                        <Button
+                                            onClick={handleCreateAccount}
+                                            disabled={isCreating || !newAccountName.trim()}
+                                            className="w-full"
+                                        >
+                                            {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
+                                        </Button>
                                     </div>
-                                    <Button
-                                        onClick={handleCreateAccount}
-                                        disabled={isCreating || !newAccountName.trim()}
-                                        className="w-full"
-                                    >
-                                        {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
-                                    </Button>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
+                                </DialogContent>
+                            </Dialog>
+                        )}
                     </div>
                 </div>
             </header>
 
             <div className="p-4">
-                <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <Tabs value={activeTab} onValueChange={(val) => {
+                    setActiveTab(val);
+                    setIsSelectionMode(false);
+                    setSelectedReceivables(new Set());
+                }}>
                     <TabsList className="w-full mb-4">
                         {Object.entries(tabConfig).map(([key, config]) => (
                             <TabsTrigger key={key} value={key} className="flex-1">
@@ -642,42 +808,64 @@ function AccountsContent() {
                                 </Card>
 
                                 {/* Accounts list */}
-                                {typeAccounts.map((account) => (
-                                    <Card
-                                        key={account.id}
-                                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                                        onClick={() => openEditDialog(account)}
-                                    >
-                                        <CardContent className="p-4 flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg">
-                                                {account.icon || '💰'}
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-medium">{account.name}</p>
-                                                    {account.isGoalAccount && (
-                                                        <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">🎯 Goal</span>
-                                                    )}
+                                {typeAccounts.map((account) => {
+                                    const isSelected = selectedReceivables.has(account.id);
+                                    return (
+                                        <Card
+                                            key={account.id}
+                                            className={`cursor-pointer transition-all ${isSelectionMode
+                                                ? isSelected ? 'bg-emerald-500/10 border-emerald-500' : 'hover:bg-muted/50'
+                                                : 'hover:bg-muted/50'
+                                                }`}
+                                            onClick={() => {
+                                                if (isSelectionMode && type === 'receivable') {
+                                                    toggleSelection(account.id);
+                                                } else if (!isSelectionMode) {
+                                                    openEditDialog(account);
+                                                }
+                                            }}
+                                        >
+                                            <CardContent className="p-4 flex items-center gap-3">
+                                                {/* Selection Checkbox */}
+                                                {isSelectionMode && type === 'receivable' && (
+                                                    <div className={`
+                                                        w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors
+                                                        ${isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-muted-foreground'}
+                                                    `}>
+                                                        {isSelected && <Check className="w-4 h-4 text-white" />}
+                                                    </div>
+                                                )}
+
+                                                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-lg">
+                                                    {account.icon || '💰'}
                                                 </div>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {type === 'receivable'
-                                                        ? `Owes you${account.category ? ` for ${account.category}` : ''}`
-                                                        : type === 'liability'
-                                                            ? account.isPaid
-                                                                ? '✓ Paid'
-                                                                : `You owe${account.category ? ` for ${account.category}` : ''}`
-                                                            : account.isGoalAccount ? 'Goal Account' : 'Balance'}
-                                                </p>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className={`font-bold ${config.color}`}>
-                                                    {formatCurrency(account.balance)}
-                                                </span>
-                                                <Pencil className="w-4 h-4 text-muted-foreground" />
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="font-medium">{account.name}</p>
+                                                        {account.isGoalAccount && (
+                                                            <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">🎯 Goal</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {type === 'receivable'
+                                                            ? `Owes you${account.category ? ` for ${account.category}` : ''}`
+                                                            : type === 'liability'
+                                                                ? account.isPaid
+                                                                    ? '✓ Paid'
+                                                                    : `You owe${account.category ? ` for ${account.category}` : ''}`
+                                                                : account.isGoalAccount ? 'Goal Account' : 'Balance'}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`font-bold ${config.color}`}>
+                                                        {formatCurrency(account.balance)}
+                                                    </span>
+                                                    {!isSelectionMode && <Pencil className="w-4 h-4 text-muted-foreground" />}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    );
+                                })}
 
                                 {typeAccounts.length === 0 && (
                                     <div className="text-center py-8 text-muted-foreground">
