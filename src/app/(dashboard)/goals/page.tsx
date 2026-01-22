@@ -22,6 +22,8 @@ import {
 } from '@/lib/firebase/goals-service';
 import { createTransaction } from '@/lib/firebase/transactions-service';
 import { SavingsGoal, Account } from '@/types/firestore';
+import { useChatActions } from '@/lib/chat-action-context';
+
 
 // Status colors and icons
 const statusConfig = {
@@ -35,6 +37,8 @@ const statusConfig = {
 export default function GoalsPage() {
     const router = useRouter();
     const { user } = useAuth();
+    const { isGoalFormOpen, closeGoalForm, goalPrefill } = useChatActions();
+
 
     const [goals, setGoals] = useState<SavingsGoal[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
@@ -85,6 +89,19 @@ export default function GoalsPage() {
         }
         fetchData();
     }, [user]);
+
+    // Sync with chat context
+    useEffect(() => {
+        if (isGoalFormOpen) {
+            setIsAddOpen(true);
+            if (goalPrefill) {
+                if (goalPrefill.name) setNewName(goalPrefill.name);
+                if (goalPrefill.target) setNewTarget(goalPrefill.target.toString());
+                if (goalPrefill.icon) setNewIcon(goalPrefill.icon);
+            }
+        }
+    }, [isGoalFormOpen, goalPrefill]);
+
 
     const refreshData = async () => {
         if (!user) return;
@@ -495,7 +512,11 @@ export default function GoalsPage() {
             </div>
 
             {/* Add Goal Dialog */}
-            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+            <Dialog open={isAddOpen} onOpenChange={(open) => {
+                setIsAddOpen(open);
+                if (!open) closeGoalForm();
+            }}>
+
                 <DialogContent className="max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Create Savings Goal</DialogTitle>

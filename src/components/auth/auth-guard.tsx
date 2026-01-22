@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { isFirebaseConfigured } from '@/lib/firebase/config';
@@ -19,8 +19,15 @@ export function AuthGuard({ children }: AuthGuardProps) {
     const pathname = usePathname();
 
     const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!mounted) return;
+
         if (!loading && isFirebaseConfigured) {
             if (!user && !isPublicRoute) {
                 router.push('/login');
@@ -28,7 +35,12 @@ export function AuthGuard({ children }: AuthGuardProps) {
                 router.push('/');
             }
         }
-    }, [user, loading, isPublicRoute, router]);
+    }, [user, loading, isPublicRoute, router, mounted]);
+
+    // Don't render anything during SSR/hydration to avoid mismatches
+    if (!mounted) {
+        return null;
+    }
 
     // Show setup instructions if Firebase is not configured
     if (!isFirebaseConfigured) {

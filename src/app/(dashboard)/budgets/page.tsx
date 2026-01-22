@@ -18,6 +18,8 @@ import {
 } from '@/lib/firebase/budget-service';
 import { Budget } from '@/types/firestore';
 import { DEFAULT_CATEGORIES, CategoryDef } from '@/lib/categories';
+import { useChatActions } from '@/lib/chat-action-context';
+
 
 // Status colors for budget progress
 const getProgressColor = (progress: BudgetProgress) => {
@@ -29,6 +31,8 @@ const getProgressColor = (progress: BudgetProgress) => {
 export default function BudgetsPage() {
     const router = useRouter();
     const { user } = useAuth();
+    const { isBudgetFormOpen, closeBudgetForm, budgetPrefill } = useChatActions();
+
 
     const [budgetProgress, setBudgetProgress] = useState<BudgetProgress[]>([]);
     const [loading, setLoading] = useState(true);
@@ -67,6 +71,18 @@ export default function BudgetsPage() {
         }
         fetchData();
     }, [user]);
+
+    // Sync with chat context
+    useEffect(() => {
+        if (isBudgetFormOpen) {
+            setIsAddOpen(true);
+            if (budgetPrefill) {
+                if (budgetPrefill.category) setNewCategory(budgetPrefill.category);
+                if (budgetPrefill.amount) setNewAmount(budgetPrefill.amount.toString());
+            }
+        }
+    }, [isBudgetFormOpen, budgetPrefill]);
+
 
     const refreshData = async () => {
         if (!user) return;
@@ -206,8 +222,8 @@ export default function BudgetsPage() {
                             <div className="h-3 bg-muted rounded-full overflow-hidden">
                                 <div
                                     className={`h-full rounded-full transition-all duration-500 ${overallPercent > 100 ? 'bg-rose-500' :
-                                            overallPercent > 80 ? 'bg-amber-500' :
-                                                'bg-gradient-to-r from-primary to-primary/70'
+                                        overallPercent > 80 ? 'bg-amber-500' :
+                                            'bg-gradient-to-r from-primary to-primary/70'
                                         }`}
                                     style={{ width: `${Math.min(overallPercent, 100)}%` }}
                                 />
@@ -315,7 +331,11 @@ export default function BudgetsPage() {
             </div>
 
             {/* Add Budget Dialog */}
-            <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+            <Dialog open={isAddOpen} onOpenChange={(open) => {
+                setIsAddOpen(open);
+                if (!open) closeBudgetForm();
+            }}>
+
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Create Budget Limit</DialogTitle>
@@ -333,8 +353,8 @@ export default function BudgetsPage() {
                                         key={cat.id}
                                         onClick={() => setNewCategory(cat.id)}
                                         className={`p-3 rounded-lg text-left flex items-center gap-2 ${newCategory === cat.id
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-muted hover:bg-muted/80'
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'bg-muted hover:bg-muted/80'
                                             }`}
                                     >
                                         <span>{cat.icon}</span>

@@ -1,10 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Loader2, Sparkles, RefreshCw } from 'lucide-react';
+import { MessageSquare, X, Send, Loader2, Sparkles, RefreshCw, Eye } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { buildFinancialContext, formatContextForAI } from '@/lib/chat-context';
+import { useChatActions } from '@/lib/chat-action-context';
+
 
 interface Message {
     id: string;
@@ -95,12 +99,17 @@ function renderInlineMarkdown(text: string): React.ReactNode[] {
 
 export function ChatDialog() {
     const { user } = useAuth();
+    const router = useRouter();
+    const pathname = usePathname();
+    const { openBudgetForm, openGoalForm, openTransactionForm } = useChatActions();
+
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [financialContext, setFinancialContext] = useState<string>('');
     const [isLoadingContext, setIsLoadingContext] = useState(false);
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -136,6 +145,60 @@ export function ChatDialog() {
         }
     };
 
+    const getViewFromPath = (path: string) => {
+        if (path.includes('/budgets')) return 'Budgets';
+        if (path.includes('/goals')) return 'Savings Goals';
+        if (path.includes('/recurring')) return 'Recurring';
+        if (path.includes('/transactions')) return 'Transactions';
+        if (path.includes('/insights')) return 'Insights';
+        if (path.includes('/accounts')) return 'Accounts';
+        if (path.includes('/home') || path === '/') return 'Dashboard';
+        return 'General';
+    };
+
+    const processAction = (content: string) => {
+        const actionMatch = content.match(/\[\[ACTION:(\w+):({.*})\]\]/);
+        if (actionMatch) {
+            const [, actionType, dataJson] = actionMatch;
+            const cleanContent = content.replace(actionMatch[0], '').trim();
+
+            try {
+                const data = JSON.parse(dataJson);
+                console.log('Executing AI action:', actionType, data);
+
+                // Add a small delay to make it feel natural and allow router update if needed
+                setTimeout(() => {
+                    const currentPath = window.location.pathname;
+                    console.log('Current path:', currentPath, 'Target action:', actionType);
+
+                    switch (actionType) {
+                        case 'open_budget_form':
+                            if (!currentPath.includes('/budgets')) {
+                                console.log('Redirecting to /budgets...');
+                                router.push('/budgets');
+                            }
+                            openBudgetForm(data);
+                            break;
+                        case 'open_goal_form':
+                            if (!currentPath.includes('/goals')) {
+                                console.log('Redirecting to /goals...');
+                                router.push('/goals');
+                            }
+                            openGoalForm(data);
+                            break;
+                        // Transaction form not fully implemented yet in context
+                    }
+                }, 100);
+            } catch (e) {
+                console.error('Failed to parse action data', e);
+            }
+
+            return cleanContent;
+        }
+        return content;
+    };
+
+
     const sendMessage = async (content: string) => {
         if (!content.trim() || isLoading) return;
 
@@ -160,7 +223,9 @@ export function ChatDialog() {
                         content: m.content,
                     })),
                     financialContext,
+                    currentView: getViewFromPath(pathname),
                 }),
+
             });
 
             if (!response.ok) {
@@ -169,12 +234,16 @@ export function ChatDialog() {
 
             const data = await response.json();
 
+            // Process any actions in the response
+            const finalContent = processAction(data.message);
+
             const assistantMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: data.message,
+                content: finalContent,
                 timestamp: new Date(),
             };
+
 
             setMessages(prev => [...prev, assistantMessage]);
         } catch (error) {
@@ -211,7 +280,7 @@ export function ChatDialog() {
             {/* Floating Button */}
             <button
                 onClick={() => setIsOpen(true)}
-                className={`fixed bottom-24 right-6 z-[60] p-4 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-105 transition-all duration-300 ${isOpen ? 'hidden' : ''}`}
+                className={`fixed bottom-6.5 right-6 z-[60] p-4 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-105 transition-all duration-300 ${isOpen ? 'hidden' : ''}`}
                 aria-label="Open chat"
             >
                 <MessageSquare className="w-6 h-6" />
@@ -233,8 +302,17 @@ export function ChatDialog() {
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-2">
+                            {/* Context Indicator */}
+                            <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-full bg-primary/10 border border-primary/20">
+                                <Eye className="w-3 h-3 text-primary" />
+                                <span className="text-[10px] font-medium text-primary uppercase tracking-wider">
+                                    {getViewFromPath(pathname)}
+                                </span>
+                            </div>
+
                             <button
+
                                 onClick={handleRefreshContext}
                                 className="p-2 rounded-full hover:bg-muted transition-colors"
                                 title="Refresh financial data"
