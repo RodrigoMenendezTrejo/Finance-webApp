@@ -4,10 +4,11 @@ import { useState, Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
     ArrowLeft, Plus, Wallet, CreditCard, Users, Loader2,
-    Trash2, Check, Pencil, Camera, ArrowLeftRight, Share2, X
+    Trash2, Check, Pencil, Camera, ArrowLeftRight, Share2, X, CheckSquare
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { toast } from 'sonner';
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
     DialogFooter, DialogDescription, DialogTrigger
@@ -190,39 +191,123 @@ function AccountsContent() {
     };
 
     const handleShare = async () => {
-        if (selectedReceivables.size === 0 || !shareCardRef.current) return;
+        if (selectedReceivables.size === 0) return;
         setIsSharing(true);
 
         try {
-            // Check if Web Share API is supported (or if just file sharing is supported)
-            if (!navigator.share) {
-                alert('Sharing is not supported on this browser/device.');
-                return;
+            const items = accounts.filter(a => selectedReceivables.has(a.id));
+            const total = items.reduce((sum, a) => sum + a.balance, 0);
+
+            // 1. Generate SVG String
+            const width = 400;
+            const padding = 24;
+            const headerHeight = 100;
+            const itemHeight = 84; // increased slightly for better spacing
+            const footerHeight = 80;
+            const contentHeight = (items.length * itemHeight);
+            const height = headerHeight + contentHeight + footerHeight;
+
+            const escapeXml = (unsafe: string) => unsafe.replace(/[<>&'"]/g, c => {
+                switch (c) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case '\'': return '&apos;';
+                    case '"': return '&quot;';
+                }
+                return c;
+            });
+
+            const svgContent = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+                    <rect width="${width}" height="${height}" fill="#1E293B" rx="16"/>
+                    
+                    <!-- Header -->
+                    <text x="${padding}" y="${50}" fill="#34D399" font-family="sans-serif" font-size="28" font-weight="bold">Shared Expenses</text>
+                    <text x="${padding}" y="${78}" fill="#9CA3AF" font-family="sans-serif" font-size="16">Summary</text>
+                    
+                    <!-- Wallet Icon Circle -->
+                    <circle cx="${width - padding - 24}" cy="${50}" r="24" fill="#064E3B" />
+                    <!-- Icon path -->
+                    <g transform="translate(${width - padding - 36}, ${38})">
+                         <path d="M20 12V8H6a2 2 0 0 1 0-4h14v4" stroke="#10B981" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                         <path d="M4 6v14a2 2 0 0 0 2 2h14v-5" stroke="#10B981" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                         <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" stroke="#10B981" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    </g>
+
+                    <!-- List -->
+                    <g transform="translate(0, ${headerHeight})">
+                        ${items.map((item, index) => {
+                const y = index * itemHeight;
+                const initials = item.name.substring(0, 2).toUpperCase();
+                const amount = formatCurrency(item.balance);
+                return `
+                                <g transform="translate(${padding}, ${y})">
+                                    <rect width="${width - (padding * 2)}" height="72" rx="12" fill="#111827" stroke="#374151" stroke-width="1"/>
+                                    
+                                    <!-- Avatar -->
+                                    <circle cx="36" cy="36" r="18" fill="#6366F1"/>
+                                    <text x="36" y="41" fill="#FFFFFF" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">${escapeXml(initials)}</text>
+                                    
+                                    <!-- Name & Category -->
+                                    <text x="66" y="32" fill="#FFFFFF" font-family="sans-serif" font-size="16" font-weight="500">${escapeXml(item.name)}</text>
+                                    <text x="66" y="54" fill="#9CA3AF" font-family="sans-serif" font-size="13">${escapeXml(item.category || 'Receivable')}</text>
+                                    
+                                    <!-- Amount -->
+                                    <text x="${width - (padding * 2) - 16}" y="42" fill="#34D399" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="end">${amount}</text>
+                                </g>
+                            `;
+            }).join('')}
+                    </g>
+
+                    <!-- Footer -->
+                    <line x1="${padding}" y1="${height - footerHeight + 20}" x2="${width - padding}" y2="${height - footerHeight + 20}" stroke="#374151" stroke-width="1"/>
+                    <text x="${padding}" y="${height - 25}" fill="#9CA3AF" font-family="sans-serif" font-size="18">Total</text>
+                    <text x="${width - padding}" y="${height - 25}" fill="#10B981" font-family="sans-serif" font-size="28" font-weight="bold" text-anchor="end">${formatCurrency(total)}</text>
+                </svg>
+            `;
+
+            // 2. Convert SVG to PNG via Canvas
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+
+            // Base64 encode the SVG to safe data URI
+            const svg64 = btoa(unescape(encodeURIComponent(svgContent)));
+            const b64Start = 'data:image/svg+xml;base64,';
+            const image64 = b64Start + svg64;
+
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                img.src = image64;
+            });
+
+            canvas.width = width;
+            canvas.height = height;
+            if (ctx) {
+                ctx.drawImage(img, 0, 0);
             }
-
-            // Import html2canvas dynamically to avoid SSR issues
-            const html2canvas = (await import('html2canvas')).default;
-
-            // Generate image
-            const canvas = await html2canvas(shareCardRef.current, {
-                backgroundColor: '#1E293B', // Dark slate background for clean look
-                scale: 2, // High res
-            } as any);
 
             const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
             if (!blob) throw new Error('Failed to generate image');
 
             const file = new File([blob], 'payment_reminder.png', { type: 'image/png' });
 
-            // Share
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            // 3. Share
+            if (
+                typeof navigator !== 'undefined' &&
+                navigator.share &&
+                navigator.canShare &&
+                navigator.canShare({ files: [file] })
+            ) {
                 await navigator.share({
                     files: [file],
                     title: 'Payment Reminder',
                     text: 'Here is a summary of the shared expenses.',
                 });
             } else {
-                // Fallback for desktop or unsupported file sharing (e.g. just download)
+                // Fallback for desktop check
                 const link = document.createElement('a');
                 link.href = canvas.toDataURL('image/png');
                 link.download = 'payment_reminder.png';
@@ -231,22 +316,19 @@ function AccountsContent() {
                 document.body.removeChild(link);
             }
 
-            // Reset mode after successful share
             setIsSelectionMode(false);
             setSelectedReceivables(new Set());
 
         } catch (error) {
             console.error('Error sharing:', error);
-            // Ignore AbortError (user cancelled share)
             if ((error as Error).name !== 'AbortError') {
-                alert('Failed to share due to an error.');
+                toast.error(`Failed to share: ${(error as Error).message}`);
             }
         } finally {
             setIsSharing(false);
         }
     };
 
-    // ... (rest of methods)
 
     // Photo handling for Add dialog
     const handleAddPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -566,9 +648,9 @@ function AccountsContent() {
     }
 
     return (
-        <main className="min-h-screen pb-8">
+        <main className="min-h-screen pb-8" >
             {/* Header */}
-            <header className="sticky top-0 z-40 backdrop-blur-lg bg-background/80 border-b border-border/50">
+            < header className="sticky top-0 z-40 backdrop-blur-lg bg-background/80 border-b border-border/50" >
                 <div className="px-4 py-3 flex items-center gap-3">
                     <button
                         onClick={() => router.back()}
@@ -592,8 +674,8 @@ function AccountsContent() {
                                                 setSelectedReceivables(new Set());
                                             }}
                                         >
-                                            <X className="w-4 h-4 mr-1" />
-                                            Cancel
+                                            <X className="w-4 h-4 md:mr-1" />
+                                            <span className="hidden md:inline">Cancel</span>
                                         </Button>
                                         <Button
                                             size="sm"
@@ -606,8 +688,9 @@ function AccountsContent() {
                                                 <Loader2 className="w-4 h-4 animate-spin" />
                                             ) : (
                                                 <>
-                                                    <Share2 className="w-4 h-4 mr-1" />
-                                                    Share ({selectedReceivables.size})
+                                                    <Share2 className="w-4 h-4 md:mr-1" />
+                                                    <span className="hidden md:inline">Share ({selectedReceivables.size})</span>
+                                                    <span className="md:hidden">({selectedReceivables.size})</span>
                                                 </>
                                             )}
                                         </Button>
@@ -618,7 +701,8 @@ function AccountsContent() {
                                         variant="outline"
                                         onClick={() => setIsSelectionMode(true)}
                                     >
-                                        Select
+                                        <CheckSquare className="w-4 h-4 md:mr-1" />
+                                        <span className="hidden md:inline">Select</span>
                                     </Button>
                                 )}
                             </>
@@ -772,7 +856,7 @@ function AccountsContent() {
                         )}
                     </div>
                 </div>
-            </header>
+            </header >
 
             <div className="p-4">
                 <Tabs value={activeTab} onValueChange={(val) => {
@@ -1192,6 +1276,7 @@ function AccountsContent() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            {/* Share Card is now generated dynamically via SVG, no hidden DOM element needed */}
         </main>
     );
 }
