@@ -179,13 +179,10 @@ export async function POST(request: NextRequest) {
         // API Keys Strategy: Failover
         // 1. Try env variable primary key
         // 2. Try env variable backup key
-        // 3. Try hardcoded backup (provided by user) - *Temporary/Dev fallback*
-        const BACKUP_KEY_HARDCODED = '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';
 
         const apiKeys = [
             process.env.GROQ_API_KEY,
-            process.env.GROQ_API_KEY_BACKUP,
-            BACKUP_KEY_HARDCODED
+            process.env.GROQ_API_KEY_BACKUP
         ].filter(Boolean) as string[];
 
         // Remove duplicates in case env backup matches hardcoded
